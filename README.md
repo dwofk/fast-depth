@@ -23,6 +23,11 @@ This repo offers trained models and evaluation code for the [FastDepth](http://f
 ## Requirements
 - Install [PyTorch](https://pytorch.org/) on a machine with a CUDA GPU. Our code was developed on a system running PyTorch v0.4.1.
 - Install the [HDF5](https://en.wikipedia.org/wiki/Hierarchical_Data_Format) format libraries. Files in our pre-processed datasets are in HDF5 format.
+  ```bash
+  sudo apt-get update
+  sudo apt-get install -y libhdf5-serial-dev hdf5-tools
+  pip3 install h5py matplotlib imageio scikit-image opencv-python
+  ```
 - Download the preprocessed [NYU Depth V2](http://cs.nyu.edu/~silberman/datasets/nyu_depth_v2.html) dataset in HDF5 format and place it under a `data` folder outside the repo directory. The NYU dataset requires 32G of storage space.
 	```bash
 	mkdir data; cd data
@@ -63,7 +68,7 @@ We use the [TVM compiler stack](https://tvm.ai/) to compile trained models for *
 
 On the TX2, download the trained models as explained above in the section [Trained Models](#trained-models). The compiled model files should be located in `results/tvm_compiled`.
 
-#### Installing the TVM Runtime #####
+### Installing the TVM Runtime ####
 
 Deployment requires building the TVM runtime code on the target embedded device (that will be used solely for running a trained and compiled model). The following instructions are taken from [this TVM tutorial](https://docs.tvm.ai/tutorials/cross_compilation_and_rpc.html#build-tvm-runtime-on-device) and have been tested on a **TX2 with CUDA-8.0 and LLVM-4.0 installed**.
 
@@ -76,9 +81,9 @@ git submodule update --init
 cp cmake/config.cmake .
 ```
 Make the following edits to the `config.cmake` file:
-```
-set(USE_CUDA OFF) -> set(USE_CUDA [path_to_cuda])
-set(USE_LLVM OFF) -> set(USE_LLVM [path_to_llvm-config])
+```cmake
+set(USE_CUDA OFF) -> set(USE_CUDA [path_to_cuda]) # e.g. /usr/local/cuda-8.0/
+set(USE_LLVM OFF) -> set(USE_LLVM [path_to_llvm-config]) # e.g. /usr/lib/llvm-4.0/bin/llvm-config
 ```
 
 Then build the runtime:
@@ -89,7 +94,7 @@ Finally, update the `PYTHONPATH` environment variable:
 ```bash
 export PYTHONPATH=$PYTHONPATH:~/tvm/python
 ```
-#### Running a Compiled Model #####
+### Running a Compiled Model ####
 
 To run a compiled model on the device, navigate to the `deploy` folder and run:
 
@@ -105,6 +110,14 @@ python3 tx2_run_tvm.py --input-fp data/rgb.npy --output-fp data/pred.npy --model
 ```
 
 Example RGB input, ground truth, and model prediction data (as numpy arrays) is provided in the `data` folder. To convert the `.npy` files into `.png` format, navigate into `data` and run `python3 visualize.py`.
+
+### Measuring Power Consumption ###
+
+On the TX2, power consumption on the main VDD_IN rail can be measured by running the following command:
+
+```bash
+cat /sys/devices/3160000.i2c/i2c-0/0-0041/iio_device/in_power0_input
+```
 
 ## Results
 
