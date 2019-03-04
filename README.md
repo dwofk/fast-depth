@@ -31,13 +31,13 @@ This repo offers trained models and evaluation code for the [FastDepth](http://f
 - Download the preprocessed [NYU Depth V2](http://cs.nyu.edu/~silberman/datasets/nyu_depth_v2.html) dataset in HDF5 format and place it under a `data` folder outside the repo directory. The NYU dataset requires 32G of storage space.
 	```bash
 	mkdir data; cd data
-	wget http://datasets.lids.mit.edu/fast-depth/data/nyudepthv2.tar.gz
+	wget http://datasets.lids.mit.edu/fastdepth/data/nyudepthv2.tar.gz
 	tar -xvf nyudepthv2.tar.gz && rm -f nyudepthv2.tar.gz
 	cd ..
 	```
 
 ## Trained Models ##
-  The following trained models can be found at [http://datasets.lids.mit.edu/fast-depth/results/](http://datasets.lids.mit.edu/fast-depth/results/).
+  The following trained models can be found at [http://datasets.lids.mit.edu/fastdepth/results/](http://datasets.lids.mit.edu/fastdepth/results/).
   - MobileNet-NNConv5
   - MobileNet-NNConv5(depthwise)
   - MobileNet-NNConv5(depthwise), with additive skip connections
@@ -48,7 +48,7 @@ Our final model is `mobilenet-nnconv5-skipadd-pruned`, i.e. a MobileNet-NNConv5 
 When downloading, save models to a `results` folder outside the repo directory:
   ```bash
   mkdir results; cd results
-  wget -r -np -nH --cut-dirs=2 --reject "index.html*" http://datasets.lids.mit.edu/fast-depth/results/
+  wget -r -np -nH --cut-dirs=2 --reject "index.html*" http://datasets.lids.mit.edu/fastdepth/results/
   cd ..
   ```
 
@@ -62,9 +62,11 @@ To evaluate a model, navigate to the repo directory and run:
 python3 main.py --evaluate [path_to_trained_model]
 ```
 
+Note: This evaluation code was sourced and modified from [here](https://github.com/fangchangma/sparse-to-dense.pytorch).
+
 ## Deployment ##
 
-We use the [TVM compiler stack](https://tvm.ai/) to compile trained models for **deployment on an NVIDIA Jetson TX2**. Models are cross-compiled on a host machine and then deployed on the TX2. The `tvm-compile/tuning` folder in this repo contains the results of our [auto-tuning](https://docs.tvm.ai/tutorials/index.html#auto-tuning) the layers within our models for both the TX2 GPU and CPU. These can be used during the compilation process to achieve low model runtimes on the TX2. Outputs of TVM compilation for our trained models can be found at [http://datasets.lids.mit.edu/fast-depth/results/tvm_compiled/](http://datasets.lids.mit.edu/fast-depth/results/tvm_compiled/).
+We use the [TVM compiler stack](https://tvm.ai/) to compile trained models for **deployment on an NVIDIA Jetson TX2**. Models are cross-compiled on a host machine and then deployed on the TX2. The `tvm-compile/tuning` folder in this repo contains the results of our [auto-tuning](https://docs.tvm.ai/tutorials/index.html#auto-tuning) the layers within our models for both the TX2 GPU and CPU. These can be used during the compilation process to achieve low model runtimes on the TX2. Outputs of TVM compilation for our trained models can be found at [http://datasets.lids.mit.edu/fastdepth/results/tvm_compiled/](http://datasets.lids.mit.edu/fastdepth/results/tvm_compiled/).
 
 On the TX2, download the trained models as explained above in the section [Trained Models](#trained-models). The compiled model files should be located in `results/tvm_compiled`.
 
