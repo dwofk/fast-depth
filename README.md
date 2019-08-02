@@ -51,6 +51,9 @@ When downloading, save models to a `results` folder outside the repo directory:
   wget -r -np -nH --cut-dirs=2 --reject "index.html*" http://datasets.lids.mit.edu/fastdepth/results/
   cd ..
   ```
+### Pretrained MobileNet ###
+
+The model file for the pretrained MobileNet used in our model definition can be downloaded from [here](https://www.dropbox.com/sh/84saro5yqc5hlgp/AABJATSwfRIfNIh0fqWVVIV1a?dl=0).
 
 ## Evaluation ##
 
