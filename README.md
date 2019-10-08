@@ -38,7 +38,7 @@ This repo offers trained models and evaluation code for the [FastDepth](http://f
   - MobileNet-NNConv5(depthwise), with additive skip connections
   - **MobileNet-NNConv5(depthwise), with additive skip connections, pruned**
 
-Our final model is `mobilenet-nnconv5-skipadd-pruned`, i.e. a MobileNet-NNConv5 architecture with depthwise separable layers in the decoder, with additive skip connections between the encoder and decoder, and after network pruning using [NetAdapt](https://arxiv.org/pdf/1804.03230.pdf). The other models are offered to provide insight into our approach.
+Our final model is `mobilenet-nnconv5-skipadd-pruned`, i.e. a MobileNet-NNConv5 architecture with depthwise separable layers in the decoder, with additive skip connections between the encoder and decoder, and after network pruning using [NetAdapt](https://github.com/denru01/netadapt/). The other models are offered to provide insight into our approach.
 
 When downloading, save models to a `results` folder outside the repo directory:
   ```bash
