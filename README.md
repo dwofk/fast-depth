@@ -60,6 +60,8 @@ To evaluate a model, navigate to the repo directory and run:
 python3 main.py --evaluate [path_to_trained_model]
 ```
 
+The evaluation code will report model accuracy in terms of the delta1 metric as well as RMSE in millimeters.
+
 Note: This evaluation code was sourced and modified from [here](https://github.com/fangchangma/sparse-to-dense.pytorch).
 
 ## Deployment ##
@@ -123,7 +125,7 @@ cat /sys/devices/3160000.i2c/i2c-0/0-0041/iio_device/in_power0_input
 
 Comparison against prior work. Runtimes were measured on an NVIDIA Jetson TX2 in max-N mode.
 
-| on NYU Depth v2     |  Input Size  |  MACs [G]  | RMSE | delta1 | CPU [ms] | GPU [ms] |
+| on NYU Depth v2     |  Input Size  |  MACs [G]  | RMSE [m] | delta1 | CPU [ms] | GPU [ms] |
 |---------------------------------------------|:-----:|:-----:|:-----:|:-----:|:-----:|:--:|
 | [Eigen et al. [NIPS 2014]](https://papers.nips.cc/paper/5539-depth-map-prediction-from-a-single-image-using-a-multi-scale-deep-network.pdf)                | 228×304 | 2.06 | 0.907 | 0.611 | 300 | 23 |
 | [Eigen et al. [ICCV 2015]](https://www.cv-foundation.org/openaccess/content_iccv_2015/papers/Eigen_Predicting_Depth_Surface_ICCV_2015_paper.pdf) (with AlexNet) | 228×304 | 8.39 | 0.753 | 0.697 | 1400 | 96 |
