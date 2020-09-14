@@ -1,0 +1,21 @@
+{
+    "dataset_paths" : "/workspace/mnt/datasets/unreal_data_sample/",
+    "train_val_split" : [80, 20],
+    "depth_min" : 0.01,
+    "depth_max" : 50,
+    "batch_size" : 8,
+    "num_workers" : 2,
+    "gpu" : 0,
+    "loss" : "L1",
+    "optimizer" : {
+        "type" : "sgd",
+        "lr" : 0.01,
+        "momentum" : 0.9,
+        "weight_decay" : 0.0001
+    },
+    "num_epochs" : 50,
+    "stats_frequency" : 10,
+    "save_frequency" : 1,
+    "save_dir" : "results/",
+    "max_checkpoints" : 10
+}
