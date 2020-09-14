@@ -154,7 +154,7 @@ def load_checkpoint(model_path, model, optimizer):
 
 
 def get_save_path(epoch, save_dir="./results"):
-    time = datetime.now()
+    time = datetime.datetime.now()
     save_path = os.path.join(save_dir, "fastdepth_{time}_epoch_{epoch}.pth".format(time=time.strftime("%m_%d_%H_%M"),
                                                                                    epoch=str(epoch).zfill(4)))
 

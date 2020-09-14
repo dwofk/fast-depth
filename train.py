@@ -72,6 +72,7 @@ optimizer = optim.SGD(model.parameters(),
 #     experiment_dir = os.path.split(args.resume)[0]
 # else:
 #     experiment_dir = utils.make_dir_with_date(save_dir, "fastdepth")
+experiment_dir = utils.make_dir_with_date(save_dir, "fastdepth")
 start_epoch = 0
 best_loss = 100000
 losses = []
