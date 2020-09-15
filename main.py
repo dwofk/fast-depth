@@ -68,7 +68,7 @@ def main():
         # Load the checkpoint
         checkpoint = torch.load(args.evaluate)
         if type(checkpoint) is dict:
-            state_dict = checkpoint['state_dict']
+            state_dict = checkpoint['model_state_dict']
             args.start_epoch = checkpoint['epoch']
             # best_result = checkpoint['best_result']
             # model = checkpoint['model']

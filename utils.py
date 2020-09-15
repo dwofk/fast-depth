@@ -31,7 +31,7 @@ def parse_command():
                         metavar='N', help='print frequency (default: 50)')
     parser.add_argument('-e', '--evaluate', default='', type=str, metavar='PATH',)
     parser.add_argument('--gpu', default='0', type=str, metavar='N', help="gpu id")
-    parser.add_argument('--resume', type=str, help="Path to model checkpoint to resume training.")
+    parser.add_argument('--resume', type=str, default=None, help="Path to model checkpoint to resume training.")
     parser.set_defaults(cuda=True)
 
     args = parser.parse_args()
@@ -133,24 +133,32 @@ def get_train_val_split_lengths(train_val_split, dataset_length):
             int(np.around(train_val_split[1] * 0.01 * dataset_length))]
 
 
-def load_checkpoint(model_path, model, optimizer):
-    if model_path:
-        if os.path.isfile(model_path):
-            print("=> loading checkpoint '{}'".format(model_path))
+def load_checkpoint(model_path):
+    if model_path and os.path.isfile(model_path):
+        print("=> loading checkpoint '{}'".format(model_path))
 
-            checkpoint = torch.load(model_path)
-            start_epoch = checkpoint['epoch']
-            best_loss = checkpoint['best_result']
-            model.load_state_dict(checkpoint['state_dict'])
-            optimizer.load_state_dict(checkpoint['optimizer'])
-            print("=> loaded checkpoint '{}' (epoch {})"
-                    .format(model_path, checkpoint['epoch']))
-            
-            return True, model, optimizer, start_epoch, best_loss
-        else:
+        checkpoint = torch.load(model_path)
+        model_state_dict = checkpoint['model_state_dict']
+        optimizer_state_dict = checkpoint['optimizer_state_dict']
+        start_epoch = checkpoint['epoch']
+        best_loss = checkpoint['best_result']
+
+        print("=> loaded checkpoint '{}' (epoch {})"
+                .format(model_path, checkpoint['epoch']))
+        
+    else:
+        model_state_dict = None
+        optimizer_state_dict = None
+        start_epoch = 0
+        best_loss = 100000 # Very high number
+
+        if model_path:
             print("=> no checkpoint found at '{}'".format(model_path))
 
-    return False, model, optimizer, 0, 100000
+    return model_state_dict,\
+            optimizer_state_dict,\
+            start_epoch,\
+            best_loss,\
 
 
 def get_save_path(epoch, save_dir="./results"):
@@ -171,8 +179,24 @@ def save_model(model, optimizer, save_path, epoch, loss, max_checkpoints=None):
             checkpoints.pop(0)
 
     torch.save({
-            "state_dict" : model.state_dict(),
-            "optimizer" : optimizer.state_dict(),
+            "model_state_dict" : model.state_dict(),
+            "optimizer_state_dict" : optimizer.state_dict(),
             "epoch" : epoch,
             "best_result" : loss
             }, save_path)
+
+
+def optimizer_to(device, optimizer):
+    for state in optimizer.state.values():
+        for k, v in state.items():
+            if torch.is_tensor(v) and v.device == "cpu":
+                state[k] = v.cuda()
+
+def save_losses_plot(path, num_epochs, losses, title):
+    x = np.arange(1, num_epochs + 1, 1)
+    plt.plot(x, losses)
+    plt.xticks(x, x)
+    plt.xlabel("Epochs")
+    plt.ylabel("{} Loss (m)".format(title))
+    plt.title("{} Loss".format(title))
+    plt.savefig(path, bbox_inches="tight")
