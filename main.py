@@ -87,6 +87,10 @@ def main():
 
 
 def validate(val_loader, model, epoch, write_to_file=True):
+    j = 0
+    idx_start = 0
+    skip = int(len(val_loader) * 0.01)
+
     average_meter = AverageMeter()
     model.eval()  # switch to evaluate mode
     model.to(device)
@@ -110,19 +114,21 @@ def validate(val_loader, model, epoch, write_to_file=True):
         end = time.time()
 
         # save 8 images for visualization
-        skip = 5
-
         if args.modality == 'rgb':
             rgb = input
 
-        if i == 0:
-            img_merge = utils.merge_into_row(rgb, target, pred)
-        elif (i < 8*skip) and (i % skip == 0):
-            row = utils.merge_into_row(rgb, target, pred)
-            img_merge = utils.add_row(img_merge, row)
-        elif i == 8*skip:
-            filename = output_directory + '/comparison_' + str(epoch) + '.png'
-            utils.save_image(img_merge, filename)
+        if j < args.num_photos_saved:
+            if (idx_start + 8 * skip) <= len(val_loader):
+                if i == idx_start:
+                    img_merge = utils.merge_into_row(rgb, target, pred)
+                elif (i < 8*skip + idx_start) and (i % skip == 0):
+                    row = utils.merge_into_row(rgb, target, pred)
+                    img_merge = utils.add_row(img_merge, row)
+                elif i == 8*skip + idx_start:
+                    filename = output_directory + '/comparison_epoch_' + str(epoch) + '_' + str(j) + '.png'
+                    utils.save_image(img_merge, filename)
+                    idx_start += 9*skip
+                    j += 1
 
         if (i+1) % args.print_freq == 0:
             print('Test: [{0}/{1}]\t'
