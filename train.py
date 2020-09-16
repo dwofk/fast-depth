@@ -77,10 +77,10 @@ if model_state_dict:
     model.load_state_dict(model_state_dict)
 
 # Use parallel GPUs if available
-os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3" # Only 4 out of 8 on DGX
-if torch.cuda.device_count() > 1:
-  print("Let's use", torch.cuda.device_count(), "GPUs!")
-  model = nn.DataParallel(model)
+#os.environ["CUDA_VISIBLE_DEVICES"] = "4, 5" # Only 4 out of 8 on DGX
+#if torch.cuda.device_count() > 1:
+#  print("Let's use", torch.cuda.device_count(), "GPUs!")
+#  model = nn.DataParallel(model)
 
 # Send model to GPU(s)
 # This must be done before optimizer is created if a model state_dict is being loaded
