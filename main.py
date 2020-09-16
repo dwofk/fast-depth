@@ -14,7 +14,7 @@ import torch.optim
 cudnn.benchmark = True
 
 
-dataset_path = "/workspace/mnt/repositories/bayesian-visual-odometry/scripts"
+dataset_path = "/workspace/data/alex/bayesian-visual-odometry/scripts"
 sys.path.append(dataset_path)
 import Datasets
 
@@ -45,7 +45,7 @@ def main():
         from dataloaders.nyu import NYUDataset
         val_dataset = NYUDataset(valdir, split='val', modality=args.modality)
     elif args.data == "unreal":
-        valdir = {"/workspace/mnt/datasets/unreal_data_sample"}
+        valdir = {"/workspace/data/unreal/validation"}
         val_dataset = Datasets.FastDepthDataset(
             valdir, split='val', input_shape_model=(224, 224))
     else:
