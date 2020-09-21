@@ -6,7 +6,7 @@
     "batch_size" : 8,
     "num_workers" : 2,
     "gpu" : 0,
-    "loss" : "L1",
+    "loss" : "L2",
     "optimizer" : {
         "type" : "sgd",
         "lr" : 0.01,
@@ -15,7 +15,7 @@
     },
     "num_epochs" : 5,
     "stats_frequency" : 10,
-    "save_frequency" : 1,
+    "save_frequency" : 5,
     "save_dir" : "results/",
-    "max_checkpoints" : 10
+    "max_checkpoints" : 20
 }

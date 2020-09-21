@@ -87,7 +87,11 @@ if torch.cuda.device_count() > 1:
 model.to(device)
 
 # Loss & Optimizer
-criterion = torch.nn.L1Loss()
+if loss == "L2":
+    criterion = torch.nn.MSELoss()
+else:
+    criterion = torch.nn.L1Loss()
+
 optimizer = optim.SGD(model.parameters(),
                       lr=optimizer["lr"],
                       momentum=optimizer["momentum"],
