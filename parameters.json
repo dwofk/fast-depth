@@ -4,8 +4,8 @@
     "depth_min" : 0.01,
     "depth_max" : 50,
     "batch_size" : 8,
-    "num_workers" : 2,
-    "gpu" : 1,
+    "num_workers" : 8,
+    "gpu" : 0,
     "loss" : "L1",
     "optimizer" : {
         "type" : "sgd",

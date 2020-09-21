@@ -21,10 +21,11 @@ import Datasets
 args = utils.parse_command()
 print(args)
 
-os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu  # Set the GPU.
+#os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu  # Set the GPU.
 # Set GPU
 device = torch.device("cuda:{}".format(args.gpu)
                       if args.gpu.isnumeric() and torch.cuda.is_available() else "cpu")
+print("Using device", device)
 
 fieldnames = ['rmse', 'mae', 'delta1', 'absrel',
               'lg10', 'mse', 'delta2', 'delta3', 'data_time', 'gpu_time']
@@ -45,7 +46,7 @@ def main():
         from dataloaders.nyu import NYUDataset
         val_dataset = NYUDataset(valdir, split='val', modality=args.modality)
     elif args.data == "unreal":
-        valdir = {"/workspace/data/unreal/validation"}
+        valdir = {"/workspace/data/unreal/validation/HighSchoolGym-Day08112020"}
         val_dataset = Datasets.FastDepthDataset(
             valdir, split='val', input_shape_model=(224, 224))
     else:
@@ -66,7 +67,7 @@ def main():
         model = models.MobileNetSkipAdd(output_size=(224, 224), pretrained=True)
 
         # Load the checkpoint
-        checkpoint = torch.load(args.evaluate)
+        checkpoint = torch.load(args.evaluate, map_location=device)
         if type(checkpoint) is dict:
             state_dict = checkpoint['model_state_dict']
             args.start_epoch = checkpoint['epoch']
@@ -79,8 +80,17 @@ def main():
             # model = checkpoint
             args.start_epoch = 0
 
+        # create new OrderedDict that does not contain `module.`
+        from collections import OrderedDict
+        new_state_dict = OrderedDict()
+        for k, v in state_dict.items():
+            name = k[7:] # remove `module.`
+            new_state_dict[name] = v
+        # load params
+        model.load_state_dict(new_state_dict)
+
         # Load weights into model
-        model.load_state_dict(state_dict)
+        #model.load_state_dict(state_dict)
 
         output_directory = os.path.dirname(args.evaluate)
         validate(val_loader, model, args.start_epoch, write_to_file=False)
@@ -96,7 +106,8 @@ def validate(val_loader, model, epoch, write_to_file=True):
     model.to(device)
     end = time.time()
     for i, (input, target) in enumerate(val_loader):
-        input, target = input.cuda(), target.cuda()
+        input, target = input.to(device), target.to(device)
+#        input, target = input.cuda(), target.cuda()
         # torch.cuda.synchronize()
         data_time = time.time() - end
 

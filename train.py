@@ -30,6 +30,7 @@ training_dir, train_val_split, depth_min, depth_max, batch_size, \
 training_dir = utils.format_dataset_path(training_dir)
 
 # Create dataset
+print("Loading the dataset...")
 dataset = Datasets.FastDepthDataset(training_dir,
                                     split='train',
                                     depthMin=depth_min,
@@ -77,10 +78,11 @@ if model_state_dict:
     model.load_state_dict(model_state_dict)
 
 # Use parallel GPUs if available
-#os.environ["CUDA_VISIBLE_DEVICES"] = "4, 5" # Only 4 out of 8 on DGX
-#if torch.cuda.device_count() > 1:
-#  print("Let's use", torch.cuda.device_count(), "GPUs!")
-#  model = nn.DataParallel(model)
+os.environ["CUDA_VISIBLE_DEVICES"] = "0, 1, 2, 3" # Specify which GPUs to use on DGX
+num_gpus = len(os.environ["CUDA_VISIBLE_DEVICES"].split(','))
+if torch.cuda.device_count() > 1:
+  print("Let's use", num_gpus, "GPUs!")
+  model = nn.DataParallel(model)
 
 # Send model to GPU(s)
 # This must be done before optimizer is created if a model state_dict is being loaded
