@@ -48,14 +48,15 @@ def colored_depthmap(depth, d_min=None, d_max=None):
     depth_relative = (depth - d_min) / (d_max - d_min)
     return 255 * cmap(depth_relative)[:,:,:3] # H, W, C
 
-def visualize_depth(depth):
+def visualize_depth(depth, _min=None, _max=None):
     # so the image isn't all white, convert it to range [0, 1.0]
     _mean, _std = (np.mean(depth), np.std(depth))
-    _min, _max = (np.min(depth), np.max(depth))
-    
-    # print('Depth (min, max):', (_min, _max))
-    # print('Depth (mean, std):', (_mean, _std))
 
+    if _min is None:
+        _min = np.min(depth)
+    if _max is None:
+        _max = np.max(depth)
+    
     newMax = _mean + 2 * _std
     newMin = _mean - 2 * _std
     if newMax < _max:
@@ -75,18 +76,53 @@ def visualize_depth(depth):
     depth = cv2.applyColorMap(depth, cv2.COLORMAP_TURBO)
     return depth
 
+def visualize_depth_compare(depth, target):
+    _mean_target, _std_target = (np.mean(target), np.std(target))
+    _min = np.min(target)
+    _max = np.max(target)
+
+    # newMax = _mean_target + 2 * _std_target
+    # newMin = _mean_target - 2 * _std_target
+    # if newMax < _max:
+    #     _max = newMax
+    # if newMin > _min:
+    #     _min = newMin
+
+    _range = _max-_min
+    if _range:
+        depth -= _min
+        depth /= _range
+        target -= _min
+        target /= _range
+    
+    # Convert to bgr
+    depth = cv2.cvtColor(depth, cv2.COLOR_GRAY2BGR)
+    target = cv2.cvtColor(target, cv2.COLOR_GRAY2BGR)
+
+    # Color mapping for better visibility / contrast
+    depth = np.array(depth * 255, dtype=np.uint8)
+    depth = cv2.applyColorMap(depth, cv2.COLORMAP_TURBO)
+    target = np.array(target * 255, dtype=np.uint8)
+    target = cv2.applyColorMap(target, cv2.COLORMAP_TURBO)
+    return depth, target
+
 def merge_into_row(input, depth_target, depth_pred):
     rgb = 255 * np.transpose(np.squeeze(input.cpu().numpy()), (1,2,0)) # H, W, C
     depth_target_cpu = np.squeeze(depth_target.cpu().numpy())
     depth_pred_cpu = np.squeeze(depth_pred.data.cpu().numpy())
 
-    # d_min = min(np.min(depth_target_cpu), np.min(depth_pred_cpu))
-    # d_max = max(np.max(depth_target_cpu), np.max(depth_pred_cpu))
+    d_min = min(np.min(depth_target_cpu), np.min(depth_pred_cpu))
+    d_max = max(np.max(depth_target_cpu), np.max(depth_pred_cpu))
     # depth_target_col = colored_depthmap(depth_target_cpu, d_min, d_max)
     # depth_pred_col = colored_depthmap(depth_pred_cpu, d_min, d_max)
 
     depth_target_col = visualize_depth(depth_target_cpu)
     depth_pred_col = visualize_depth(depth_pred_cpu)
+
+ #   depth_target_col = visualize_depth(depth_target_cpu, d_min, d_max)
+#    depth_pred_col = visualize_depth(depth_pred_cpu, d_min, d_max)
+
+#    depth_pred_col, depth_target_col = visualize_depth_compare(depth_pred_cpu, depth_target_cpu)
 
     img_merge = np.hstack([rgb, depth_target_col, depth_pred_col])
     

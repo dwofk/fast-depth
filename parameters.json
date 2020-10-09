@@ -1,21 +1,21 @@
 {
     "dataset_paths" : "/workspace/data/unreal/training",
-    "train_val_split" : [95, 5],
+    "train_val_split" : [99, 1],
     "depth_min" : 0.01,
-    "depth_max" : 50,
+    "depth_max" : 25,
     "batch_size" : 8,
     "num_workers" : 8,
     "gpu" : 0,
-    "loss" : "L2",
+    "loss" : "L1",
     "optimizer" : {
         "type" : "sgd",
         "lr" : 0.01,
         "momentum" : 0.9,
         "weight_decay" : 0.0001
-    }
-    "num_epochs" : 100,
-    "stats_frequency" : 15,
-    "save_frequency" : 5,
+    },
+    "num_epochs" : 1000,
+    "stats_frequency" : 50,
+    "save_frequency" : 10,
     "save_dir" : "results/",
-    "max_checkpoints" : 25
+    "max_checkpoints" : 60
 }

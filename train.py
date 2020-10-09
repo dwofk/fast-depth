@@ -23,7 +23,7 @@ args = utils.parse_command()
 
 # Load hyperparameters from JSON
 training_dir, train_val_split, depth_min, depth_max, batch_size, \
-    num_workers, gpu, loss, optimizer,  num_epochs, \
+    num_workers, gpu, loss_type, optimizer,  num_epochs, \
         stats_frequency, save_frequency, save_dir, max_checkpoints = utils.load_training_parameters(params_file)
 
 # Convert from JSON format to DataLoader format
@@ -88,11 +88,19 @@ if torch.cuda.device_count() > 1:
 # This must be done before optimizer is created if a model state_dict is being loaded
 model.to(device)
 
+def log_l1_loss(output, target):
+    loss = torch.mean(torch.abs(torch.log(output - target)))
+    return loss
+
 # Loss & Optimizer
-if loss == "L2":
+if loss_type == "L2":
     criterion = torch.nn.MSELoss()
+    print("Using L2 Loss")
+elif loss_type == "log":
+    print("Using log loss")
 else:
     criterion = torch.nn.L1Loss()
+    print("Using L1 Loss")
 
 optimizer = optim.SGD(model.parameters(),
                       lr=optimizer["lr"],
@@ -127,7 +135,10 @@ try:
             outputs = model(inputs)
 
             # Loss and backprop
-            loss = criterion(outputs, targets)
+            if loss_type != "log":
+                loss = criterion(outputs, targets)
+            else:
+                loss = log_l1_loss(outputs, targets)
             loss.backward()
             optimizer.step()
 
@@ -150,9 +161,13 @@ try:
                 outputs = model(inputs)
 
                 # Loss
-                val_loss = criterion(outputs, targets)
-                running_val_loss += val_loss.item()
+                if loss != "log":
+                    val_loss = criterion(outputs, targets)
+                else:
+                    val_loss = log_l1_loss(outputs, targets)
             
+                running_val_loss += val_loss.item()
+
             # Mean validation loss
             mean_val_loss = running_val_loss / len(val_loader)
             val_losses.append(mean_val_loss)
