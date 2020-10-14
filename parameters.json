@@ -1,6 +1,7 @@
 {
-    "dataset_paths" : "/workspace/data/unreal/training",
-    "train_val_split" : [99, 1],
+    "training_dataset_paths" : "/workspace/data/unreal/training",
+    "test_dataset_paths" : "/workspace/data/unreal/validation",
+    "train_val_split" : [98, 2],
     "depth_min" : 0.01,
     "depth_max" : 25,
     "batch_size" : 256,

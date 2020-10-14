@@ -2,6 +2,7 @@ import os
 import sys
 import json
 import numpy as np
+from comet_ml import Experiment
 import torch
 import torch.utils.data
 import torch.optim as optim
@@ -14,7 +15,8 @@ import matplotlib.pyplot as plt
 params_file = "parameters.json"
 
 # Import custom Dataset
-DATASET_ABS_PATH = "/workspace/data/alex/bayesian-visual-odometry/scripts"
+DATASET_ABS_PATH = "/workspace/mnt/repositories/bayesian-visual-odometry/scripts"
+# DATASET_ABS_PATH = "/workspace/data/alex/bayesian-visual-odometry/scripts"
 sys.path.append(DATASET_ABS_PATH)
 import Datasets
 
@@ -22,9 +24,23 @@ import Datasets
 args = utils.parse_command()
 
 # Load hyperparameters from JSON
-training_dir, train_val_split, depth_min, depth_max, batch_size, \
+training_dir, test_dir, train_val_split, depth_min, depth_max, batch_size, \
     num_workers, gpu, loss_type, optimizer,  num_epochs, \
         stats_frequency, save_frequency, save_dir, max_checkpoints = utils.load_training_parameters(params_file)
+
+hyper_params = {
+    "learning_rate" : optimizer["lr"],
+    "momentum" : optimizer["momentum"],
+    "weight_decay" : optimizer["weight_decay"],
+    "optimizer" : optimizer["type"],
+    "num_epochs" : num_epochs,
+    "batch_size" : batch_size,
+    "train_val_split" : train_val_split[0],
+    "depth_max" : depth_max
+}
+
+experiment = Experiment(api_key = "Bq3mQixNCv2jVzq2YBhLdxq9A", project_name="FastDepth")
+experiment.log_parameters(hyper_params)
 
 # Convert from JSON format to DataLoader format
 training_dir = utils.format_dataset_path(training_dir)
@@ -33,6 +49,12 @@ training_dir = utils.format_dataset_path(training_dir)
 print("Loading the dataset...")
 dataset = Datasets.FastDepthDataset(training_dir,
                                     split='train',
+                                    depthMin=depth_min,
+                                    depthMax=depth_max,
+                                    input_shape_model=(224, 224))
+
+test_dataset = Datasets.FastDepthDataset(test_dir,
+                                    split='val',
                                     depthMin=depth_min,
                                     depthMax=depth_max,
                                     input_shape_model=(224, 224))
@@ -50,6 +72,12 @@ train_loader = torch.utils.data.DataLoader(train_dataset,
                                            pin_memory=True)
 
 val_loader = torch.utils.data.DataLoader(val_dataset,
+                                         batch_size=batch_size,
+                                         shuffle=True,
+                                         num_workers=num_workers,
+                                         pin_memory=True)
+
+test_loader = torch.utils.data.DataLoader(test_dataset,
                                          batch_size=batch_size,
                                          shuffle=True,
                                          num_workers=num_workers,
@@ -114,71 +142,69 @@ utils.optimizer_to(device, optimizer)
 
 # To catch and handle Ctrl-C interrupt
 try:
-    losses = []
-    val_losses = []
-    is_best_loss = False
-    for epoch in range(num_epochs):
-        current_epoch = start_epoch + epoch + 1
-        running_loss = 0.0
-        model.train()
-        
-        for i, (inputs, targets) in enumerate(train_loader):
+    with experiment.train():
+        train_step = 0
+        val_step = 0
+        for epoch in range(num_epochs):
+            experiment.log_current_epoch(epoch)
+            current_epoch = start_epoch + epoch + 1
+            running_loss = 0.0
+            model.train()
+            
+            for i, (inputs, targets) in enumerate(train_loader):
 
-            # Send data to GPU
-            inputs, targets = inputs.to(device), targets.to(device)
-
-            # Zero the parameter gradients
-            optimizer.zero_grad()
-
-            # Predict
-            outputs = model(inputs)
-
-            # Loss and backprop
-            loss = criterion(outputs, targets)
-            loss.backward()
-            optimizer.step()
-
-            # Print statistics
-            running_loss += loss.item()
-            if (i + 1) % stats_frequency == 0 and i != 0:
-                print('[%d, %5d] loss: %.3f' %
-                    (current_epoch, i + 1, running_loss / stats_frequency))
-                running_loss = 0.0
-
-        # Validation each epoch
-        running_val_loss = 0.0
-        with torch.no_grad():
-                
-            model.eval()
-            for i, (inputs, targets) in enumerate(val_loader):
+                # Send data to GPU
                 inputs, targets = inputs.to(device), targets.to(device)
+
+                # Zero the parameter gradients
+                optimizer.zero_grad()
 
                 # Predict
                 outputs = model(inputs)
 
-                # Loss
-                val_loss = criterion(outputs, targets)
-                running_val_loss += val_loss.item()
+                # Loss and backprop
+                loss = criterion(outputs, targets)
+                loss.backward()
+                optimizer.step()
 
-            # Mean validation loss
-            mean_val_loss = running_val_loss / len(val_loader)
-            val_losses.append(mean_val_loss)
-            print("Validation Loss [%d]: %.3f" % (current_epoch, mean_val_loss))
+                # Log to Comet
+                experiment.log_metric("loss", loss.item(), step=step)
+                train_step += 1
 
-        # Save periodically
-        if (epoch + 1) % save_frequency == 0:
-            
-                # Save best loss
-                # is_best_loss = mean_val_loss < best_loss
-                # if is_best_loss:
-                #     best_loss = mean_val_loss
+                # Print statistics
+                running_loss += loss.item()
+                if (i + 1) % stats_frequency == 0 and i != 0:
+                    print('[%d, %5d] loss: %.3f' %
+                        (current_epoch, i + 1, running_loss / stats_frequency))
+                    running_loss = 0.0
 
-            # Save checkpoint if it's a new best
-            # if is_best_loss:
+            # Validation each epoch
+            running_val_loss = 0.0
+            with torch.no_grad():
+                    
+                model.eval()
+                for i, (inputs, targets) in enumerate(val_loader):
+                    inputs, targets = inputs.to(device), targets.to(device)
 
-            print("Saving new checkpoint")
-            save_path = utils.get_save_path(current_epoch, experiment_dir)
-            utils.save_model(model, optimizer, save_path, current_epoch, best_loss, max_checkpoints)
+                    # Predict
+                    outputs = model(inputs)
+
+                    # Loss
+                    val_loss = criterion(outputs, targets)
+
+                    running_val_loss += val_loss.item()
+                    experiment.log_metric("val_loss", val_loss.item(), step=step)
+                    val_step += 1
+
+                # Mean validation loss
+                mean_val_loss = running_val_loss / len(val_loader)
+                print("Validation Loss [%d]: %.3f" % (current_epoch, mean_val_loss))
+
+            # Save periodically
+            if (epoch + 1) % save_frequency == 0:
+                save_path = utils.get_save_path(current_epoch, experiment_dir)
+                utils.save_model(model, optimizer, save_path, current_epoch, best_loss, max_checkpoints)
+                print("Saving new checkpoint")
 
     print("Finished training")
 
@@ -187,17 +213,27 @@ try:
     utils.save_model(model, optimizer, save_path, current_epoch, mean_val_loss, max_checkpoints)
     print("Model saved to ", os.path.abspath(save_path))
 
-    # Save loss plots
-    save_path = os.path.join(experiment_dir, "validation_loss.png")
-    utils.save_losses_plot(save_path, num_epochs, val_losses, "Validation")
+    with experiment.test():
+        model.eval()
+        running_loss = 0.0
+        for i, (inputs, targets) in enumerate(test_loader):
+            inputs, targets = inputs.to(device), targets.to(device)
 
+            # Predict
+            outputs = model(inputs)
+
+            # Loss
+            loss = criterion(outputs, targets)
+            running_loss += loss.item()
+
+        # Mean validation loss
+        mean_loss = running_loss / len(test_loader)
+        experiment.log_metric("test_loss", mean_loss)
+        print("Average Test Loss: %.3f" % (mean_loss))
+        
 except KeyboardInterrupt:
     print("Saving model and quitting...")
 
     save_path = utils.get_save_path(current_epoch, experiment_dir)
     utils.save_model(model, optimizer, save_path, current_epoch, mean_val_loss, max_checkpoints)
     print("Model saved to ", os.path.abspath(save_path))
-
-    # Save loss plots
-    save_path = os.path.join(experiment_dir, "validation_loss.png")
-    utils.save_losses_plot(save_path, current_epoch - 1, val_losses, "Validation")

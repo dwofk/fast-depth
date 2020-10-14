@@ -139,10 +139,12 @@ def merge_into_row_with_gt(input, depth_input, depth_target, depth_pred):
 def add_row(img_merge, row):
     return np.vstack([img_merge, row])
 
+
 def write_results(img, results):
     font = cv2.FONT_HERSHEY_SIMPLEX
     rmse = "RMSE: {:.2f}m".format(results.rmse)
     cv2.putText(img, rmse, (int(img.shape[1]/2) - 110, img.shape[0] - 5), font, 1, (255, 255, 255), 1)
+
 
 def save_image(img_merge, filename):
     img_merge = Image.fromarray(img_merge.astype('uint8'))
@@ -154,7 +156,8 @@ def load_training_parameters(file):
         raise ValueError("Parameters file does not exist")
 
     params = json.load(open(file))
-    return params["dataset_paths"], \
+    return params["training_dataset_paths"], \
+        params["test_dataset_paths"], \
         params["train_val_split"], \
         params["depth_min"], \
         params["depth_max"], \
