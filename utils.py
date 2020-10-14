@@ -78,15 +78,8 @@ def visualize_depth(depth, _min=None, _max=None):
 
 def visualize_depth_compare(depth, target):
     _mean_target, _std_target = (np.mean(target), np.std(target))
-    _min = np.min(target)
-    _max = np.max(target)
-
-    # newMax = _mean_target + 2 * _std_target
-    # newMin = _mean_target - 2 * _std_target
-    # if newMax < _max:
-    #     _max = newMax
-    # if newMin > _min:
-    #     _min = newMin
+    _min = min(np.min(target), np.min(depth))
+    _max = max(np.max(target), np.max(depth))
 
     _range = _max-_min
     if _range:
@@ -94,7 +87,7 @@ def visualize_depth_compare(depth, target):
         depth /= _range
         target -= _min
         target /= _range
-    
+
     # Convert to bgr
     depth = cv2.cvtColor(depth, cv2.COLOR_GRAY2BGR)
     target = cv2.cvtColor(target, cv2.COLOR_GRAY2BGR)
@@ -115,14 +108,14 @@ def merge_into_row(input, depth_target, depth_pred):
     d_max = max(np.max(depth_target_cpu), np.max(depth_pred_cpu))
     # depth_target_col = colored_depthmap(depth_target_cpu, d_min, d_max)
     # depth_pred_col = colored_depthmap(depth_pred_cpu, d_min, d_max)
-
-    depth_target_col = visualize_depth(depth_target_cpu)
-    depth_pred_col = visualize_depth(depth_pred_cpu)
+#
+ #   depth_target_col = visualize_depth(depth_target_cpu)
+  #  depth_pred_col = visualize_depth(depth_pred_cpu)
 
  #   depth_target_col = visualize_depth(depth_target_cpu, d_min, d_max)
 #    depth_pred_col = visualize_depth(depth_pred_cpu, d_min, d_max)
 
-#    depth_pred_col, depth_target_col = visualize_depth_compare(depth_pred_cpu, depth_target_cpu)
+    depth_pred_col, depth_target_col = visualize_depth_compare(depth_pred_cpu, depth_target_cpu)
 
     img_merge = np.hstack([rgb, depth_target_col, depth_pred_col])
     

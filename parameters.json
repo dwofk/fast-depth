@@ -3,7 +3,7 @@
     "train_val_split" : [99, 1],
     "depth_min" : 0.01,
     "depth_max" : 25,
-    "batch_size" : 8,
+    "batch_size" : 256,
     "num_workers" : 8,
     "gpu" : 0,
     "loss" : "L1",
@@ -14,8 +14,8 @@
         "weight_decay" : 0.0001
     },
     "num_epochs" : 1000,
-    "stats_frequency" : 50,
-    "save_frequency" : 10,
+    "stats_frequency" : 20,
+    "save_frequency" : 2,
     "save_dir" : "results/",
-    "max_checkpoints" : 60
+    "max_checkpoints" : 80
 }

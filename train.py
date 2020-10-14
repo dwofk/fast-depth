@@ -40,6 +40,7 @@ dataset = Datasets.FastDepthDataset(training_dir,
 # Make training/validation split
 train_val_split_lengths = utils.get_train_val_split_lengths(train_val_split, len(dataset))
 train_dataset, val_dataset = torch.utils.data.random_split(dataset, train_val_split_lengths)
+print("Train/val split: ", train_val_split_lengths)
 
 # DataLoaders
 train_loader = torch.utils.data.DataLoader(train_dataset,
@@ -96,8 +97,6 @@ def log_l1_loss(output, target):
 if loss_type == "L2":
     criterion = torch.nn.MSELoss()
     print("Using L2 Loss")
-elif loss_type == "log":
-    print("Using log loss")
 else:
     criterion = torch.nn.L1Loss()
     print("Using L1 Loss")
@@ -135,10 +134,7 @@ try:
             outputs = model(inputs)
 
             # Loss and backprop
-            if loss_type != "log":
-                loss = criterion(outputs, targets)
-            else:
-                loss = log_l1_loss(outputs, targets)
+            loss = criterion(outputs, targets)
             loss.backward()
             optimizer.step()
 
@@ -161,11 +157,7 @@ try:
                 outputs = model(inputs)
 
                 # Loss
-                if loss != "log":
-                    val_loss = criterion(outputs, targets)
-                else:
-                    val_loss = log_l1_loss(outputs, targets)
-            
+                val_loss = criterion(outputs, targets)
                 running_val_loss += val_loss.item()
 
             # Mean validation loss

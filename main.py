@@ -46,7 +46,7 @@ def main():
         from dataloaders.nyu import NYUDataset
         val_dataset = NYUDataset(valdir, split='val', modality=args.modality)
     elif args.data == "unreal":
-        valdir = {"/workspace/data/unreal/training/ConvenienceStore"}
+        valdir = {"/workspace/data/unreal/training/City_Park_1082020/"}
         val_dataset = Datasets.FastDepthDataset(
             valdir, split='val', input_shape_model=(224, 224))
     else:
