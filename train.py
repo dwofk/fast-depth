@@ -59,7 +59,6 @@ val_loader = torch.utils.data.DataLoader(val_dataset,
 device = torch.device("cuda:{}".format(gpu) if type(gpu) is int and torch.cuda.is_available() else "cpu")
 print("Training on", device)
 
-# TODO: Change dict names to be more descriptive
 # Load model checkpoint if specified
 model_state_dict,\
 optimizer_state_dict,\
@@ -89,6 +88,7 @@ if torch.cuda.device_count() > 1:
 # This must be done before optimizer is created if a model state_dict is being loaded
 model.to(device)
 
+# NOT currently in use
 def log_l1_loss(output, target):
     loss = torch.mean(torch.abs(torch.log(output - target)))
     return loss

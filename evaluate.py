@@ -67,7 +67,9 @@ def main(args):
     # load params
     model.load_state_dict(state_dict)
 
-    output_directory = os.path.dirname(args.model)
+    output_directory = os.path.join(os.path.dirname(args.model), "images")
+    if not os.path.exists(output_directory):
+        os.makedirs(output_directory)
     print("Saving results to " + output_directory)
 
     validate(val_loader, model, args.start_epoch, device,
