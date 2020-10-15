@@ -258,7 +258,7 @@ def save_model(model, optimizer, save_path, epoch, loss, max_checkpoints=None):
     }, save_path)
 
 
-def optimizer_to(device, optimizer):
+def optimizer_to_gpu(optimizer):
     for state in optimizer.state.values():
         for k, v in state.items():
             if torch.is_tensor(v) and v.device == "cpu":
@@ -272,8 +272,9 @@ def convert_state_dict_from_gpu(state_dict):
         else:
             name = k
         new_state_dict[name] = v
-    
+
     return new_state_dict
+
 
 def save_losses_plot(path, num_epochs, losses, title):
     x = np.arange(1, num_epochs + 1, 1)

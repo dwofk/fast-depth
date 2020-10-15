@@ -86,16 +86,16 @@ test_loader = torch.utils.data.DataLoader(test_dataset,
                                          shuffle=False,
                                          num_workers=num_workers,
                                          pin_memory=True)
-print(len(train_loader), len(val_loader))
+
 # Configure GPU
 device = torch.device("cuda:{}".format(gpu) if type(gpu) is int and torch.cuda.is_available() else "cpu")
-print("Training on", device)
 
 # Load model checkpoint if specified
 model_state_dict,\
 optimizer_state_dict,\
 start_epoch,\
 best_loss = utils.load_checkpoint(args.resume)
+model_state_dict = utils.convert_state_dict_from_gpu(model_state_dict)
 
 # Create experiment directory
 if model_state_dict:
@@ -142,7 +142,7 @@ if optimizer_state_dict:
     optimizer.load_state_dict(optimizer_state_dict)
 
 # Load optimizer tensors onto GPU if necessary
-utils.optimizer_to(device, optimizer)
+utils.optimizer_to_gpu(optimizer)
 
 # To catch and handle Ctrl-C interrupt
 try:
@@ -155,9 +155,7 @@ try:
             running_loss = 0.0
             model.train()
             img_idxs = np.random.randint(0, len(train_loader), size=5)
-            print(img_idxs)
             for i, (inputs, targets) in enumerate(train_loader):
-                print(i)
                 # Send data to GPU
                 inputs, targets = inputs.to(device), targets.to(device)
 
@@ -197,11 +195,10 @@ try:
             running_val_loss = 0.0
             with torch.no_grad():
                 img_idxs = np.random.randint(0, len(val_loader), size=5)
-                print(img_idxs)
                 model.eval()
                 for i, (inputs, targets) in enumerate(val_loader):
                     inputs, targets = inputs.to(device), targets.to(device)
-                    print(i)
+
                     # Predict
                     outputs = model(inputs)
 
