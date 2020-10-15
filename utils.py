@@ -135,6 +135,10 @@ def merge_into_row_with_gt(input, depth_input, depth_target, depth_pred):
 
     return img_merge
 
+def log_image_to_comet(input, target, output, epoch, id, experiment, prefix):
+    img_merge = merge_into_row(input, target, output)
+    img_name = "{}_epoch_{}_id_{}".format(prefix, epoch, id)
+    experiment.log_image(img_merge, name=img_name)
 
 def add_row(img_merge, row):
     return np.vstack([img_merge, row])

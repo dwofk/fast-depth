@@ -11,12 +11,13 @@ import torch.hub
 import models
 import utils
 import matplotlib.pyplot as plt
+from metrics import AverageMeter, Result
 
 params_file = "parameters.json"
 
 # Import custom Dataset
-DATASET_ABS_PATH = "/workspace/mnt/repositories/bayesian-visual-odometry/scripts"
-# DATASET_ABS_PATH = "/workspace/data/alex/bayesian-visual-odometry/scripts"
+#DATASET_ABS_PATH = "/workspace/mnt/repositories/bayesian-visual-odometry/scripts"
+DATASET_ABS_PATH = "/workspace/data/alex/bayesian-visual-odometry/scripts"
 sys.path.append(DATASET_ABS_PATH)
 import Datasets
 
@@ -33,17 +34,20 @@ hyper_params = {
     "momentum" : optimizer["momentum"],
     "weight_decay" : optimizer["weight_decay"],
     "optimizer" : optimizer["type"],
+    "loss" : loss_type,
     "num_epochs" : num_epochs,
     "batch_size" : batch_size,
     "train_val_split" : train_val_split[0],
     "depth_max" : depth_max
 }
 
-experiment = Experiment(api_key = "Bq3mQixNCv2jVzq2YBhLdxq9A", project_name="FastDepth")
+experiment = Experiment(api_key = "Bq3mQixNCv2jVzq2YBhLdxq9A", project_name="fastdepth")
 experiment.log_parameters(hyper_params)
+experiment.add_tag(str(loss_type))
 
 # Convert from JSON format to DataLoader format
 training_dir = utils.format_dataset_path(training_dir)
+test_dir = utils.format_dataset_path(test_dir)
 
 # Create dataset
 print("Loading the dataset...")
@@ -79,10 +83,10 @@ val_loader = torch.utils.data.DataLoader(val_dataset,
 
 test_loader = torch.utils.data.DataLoader(test_dataset,
                                          batch_size=batch_size,
-                                         shuffle=True,
+                                         shuffle=False,
                                          num_workers=num_workers,
                                          pin_memory=True)
-
+print(len(train_loader), len(val_loader))
 # Configure GPU
 device = torch.device("cuda:{}".format(gpu) if type(gpu) is int and torch.cuda.is_available() else "cpu")
 print("Training on", device)
@@ -150,9 +154,10 @@ try:
             current_epoch = start_epoch + epoch + 1
             running_loss = 0.0
             model.train()
-            
+            img_idxs = np.random.randint(0, len(train_loader), size=5)
+            print(img_idxs)
             for i, (inputs, targets) in enumerate(train_loader):
-
+                print(i)
                 # Send data to GPU
                 inputs, targets = inputs.to(device), targets.to(device)
 
@@ -167,9 +172,19 @@ try:
                 loss.backward()
                 optimizer.step()
 
+                result = Result()
+                result.evaluate(outputs.data, targets.data)
+
                 # Log to Comet
-                experiment.log_metric("loss", loss.item(), step=step)
+                experiment.log_metric("loss", loss.item(), step=train_step)
+                experiment.log_metric("rmse", result.rmse, step=train_step)
+                experiment.log_metric("mae", result.mae, step=train_step)
+                experiment.log_metric("delta1", result.delta1, step=train_step)
                 train_step += 1
+
+                # Save some images for Comet
+                if i in img_idxs:
+                    utils.log_image_to_comet(inputs[0], targets[0], outputs[0], epoch, i, experiment, "train")
 
                 # Print statistics
                 running_loss += loss.item()
@@ -181,11 +196,12 @@ try:
             # Validation each epoch
             running_val_loss = 0.0
             with torch.no_grad():
-                    
+                img_idxs = np.random.randint(0, len(val_loader), size=5)
+                print(img_idxs)
                 model.eval()
                 for i, (inputs, targets) in enumerate(val_loader):
                     inputs, targets = inputs.to(device), targets.to(device)
-
+                    print(i)
                     # Predict
                     outputs = model(inputs)
 
@@ -193,7 +209,18 @@ try:
                     val_loss = criterion(outputs, targets)
 
                     running_val_loss += val_loss.item()
-                    experiment.log_metric("val_loss", val_loss.item(), step=step)
+                    result = Result()
+                    result.evaluate(outputs.data, targets.data)
+
+                    # Save some images for Comet
+                    if i in img_idxs:
+                        utils.log_image_to_comet(inputs[0], targets[0], outputs[0], epoch, i, experiment, "val")
+
+                    experiment.log_metric("val_loss", val_loss.item(), step=val_step)
+                    experiment.log_metric("rmse", result.rmse, step=train_step)
+                    experiment.log_metric("mae", result.mae, step=train_step)
+                    experiment.log_metric("delta1", result.delta1, step=train_step)
+
                     val_step += 1
 
                 # Mean validation loss
@@ -216,6 +243,8 @@ try:
     with experiment.test():
         model.eval()
         running_loss = 0.0
+        average_meter = AverageMeter()
+        img_idxs = np.random.randint(0, len(test_loader), size=min(len(test_loader), 50))
         for i, (inputs, targets) in enumerate(test_loader):
             inputs, targets = inputs.to(device), targets.to(device)
 
@@ -226,11 +255,24 @@ try:
             loss = criterion(outputs, targets)
             running_loss += loss.item()
 
+            result = Result()
+            result.evaluate(outputs.data, targets.data)
+            average_meter.update(result, 0, 0, inputs.size(0))
+
+            # Log images to comet
+            if i in img_idxs:
+                utils.log_image_to_comet(inputs[0], targets[0], outputs[0], 0, i, experiment, "test")
+
         # Mean validation loss
         mean_loss = running_loss / len(test_loader)
-        experiment.log_metric("test_loss", mean_loss)
         print("Average Test Loss: %.3f" % (mean_loss))
-        
+
+        average = average_meter.average()
+        experiment.log_metric("loss", mean_loss)
+        experiment.log_metric("average_rmse", average.rmse)
+        experiment.log_metric("average_mae", average.mae)
+        experiment.log_metric("average_delta1", average.delta1)
+
 except KeyboardInterrupt:
     print("Saving model and quitting...")
 
