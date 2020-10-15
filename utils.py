@@ -13,7 +13,7 @@ from collections import OrderedDict
 
 cmap = plt.cm.viridis
 
-
+# Here for legacy code
 def parse_command():
     data_names = ['nyudepthv2',
                   'unreal']
@@ -154,23 +154,7 @@ def load_training_parameters(file):
     if not os.path.isfile(file):
         raise ValueError("Parameters file does not exist")
 
-    params = json.load(open(file))
-    return params["training_dataset_paths"], \
-        params["test_dataset_paths"], \
-        params["train_val_split"], \
-        params["depth_min"], \
-        params["depth_max"], \
-        params["batch_size"], \
-        params["num_workers"], \
-        params["gpu"], \
-        params["loss"], \
-        params["optimizer"], \
-        params["num_epochs"], \
-        params["stats_frequency"], \
-        params["save_frequency"], \
-        params["save_dir"], \
-        params["max_checkpoints"]
-
+    return json.load(open(file))
 
 def format_dataset_path(dataset_paths):
     if isinstance(dataset_paths, str):

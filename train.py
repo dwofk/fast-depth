@@ -1,6 +1,7 @@
 import os
 import sys
 import json
+import argparse
 import numpy as np
 from comet_ml import Experiment
 import torch
@@ -21,204 +22,34 @@ DATASET_ABS_PATH = "/workspace/mnt/repositories/bayesian-visual-odometry/scripts
 sys.path.append(DATASET_ABS_PATH)
 import Datasets
 
-# Parse command args
-args = utils.parse_command()
+def train(params, train_loader, val_loader, model, criterion, optimizer, experiment):
+    try:
+        train_step = 0
+        val_step = 0
+        for epoch in range(params["num_epochs"]):
+            current_epoch = params["start_epoch"] + epoch + 1
 
-# Load hyperparameters from JSON
-training_dir, test_dir, train_val_split, depth_min, depth_max, batch_size, \
-    num_workers, gpu, loss_type, optimizer,  num_epochs, \
-        stats_frequency, save_frequency, save_dir, max_checkpoints = utils.load_training_parameters(params_file)
+            epoch_loss = 0.0
+            running_loss = 0.0
+            average = AverageMeter()
+            img_idxs = np.random.randint(0, len(train_loader), size=5)
 
-hyper_params = {
-    "learning_rate" : optimizer["lr"],
-    "momentum" : optimizer["momentum"],
-    "weight_decay" : optimizer["weight_decay"],
-    "optimizer" : optimizer["type"],
-    "loss" : loss_type,
-    "num_epochs" : num_epochs,
-    "batch_size" : batch_size,
-    "train_val_split" : train_val_split[0],
-    "depth_max" : depth_max
-}
+            model.train()
+            with experiment.train():
+                for i, (inputs, targets) in enumerate(train_loader):
+                    # Send data to GPU
+                    inputs, targets = inputs.to(params["device"]), targets.to(params["device"])
 
-experiment = Experiment(api_key = "Bq3mQixNCv2jVzq2YBhLdxq9A", project_name="fastdepth")
-experiment.log_parameters(hyper_params)
-experiment.add_tag(str(loss_type))
-
-# Convert from JSON format to DataLoader format
-training_dir = utils.format_dataset_path(training_dir)
-test_dir = utils.format_dataset_path(test_dir)
-
-training_folders = ", ".join(training_dir)
-test_folders = ", ".join(test_dir)
-experiment.log_dataset_info(path=training_folders)                                         
-experiment.log_other("test_dataset_info", test_folders)
-
-# Create dataset
-print("Loading the dataset...")
-dataset = Datasets.FastDepthDataset(training_dir,
-                                    split='train',
-                                    depthMin=depth_min,
-                                    depthMax=depth_max,
-                                    input_shape_model=(224, 224))
-
-test_dataset = Datasets.FastDepthDataset(test_dir,
-                                    split='val',
-                                    depthMin=depth_min,
-                                    depthMax=depth_max,
-                                    input_shape_model=(224, 224))
-
-# Make training/validation split
-train_val_split_lengths = utils.get_train_val_split_lengths(train_val_split, len(dataset))
-train_dataset, val_dataset = torch.utils.data.random_split(dataset, train_val_split_lengths)
-print("Train/val split: ", train_val_split_lengths)
-
-# DataLoaders
-train_loader = torch.utils.data.DataLoader(train_dataset,
-                                           batch_size=batch_size,
-                                           shuffle=True,
-                                           num_workers=num_workers,
-                                           pin_memory=True)
-
-val_loader = torch.utils.data.DataLoader(val_dataset,
-                                         batch_size=batch_size,
-                                         shuffle=True,
-                                         num_workers=num_workers,
-                                         pin_memory=True)
-
-test_loader = torch.utils.data.DataLoader(test_dataset,
-                                         batch_size=batch_size,
-                                         shuffle=False,
-                                         num_workers=num_workers,
-                                         pin_memory=True)
-
-# Configure GPU
-device = torch.device("cuda:{}".format(gpu) if type(gpu) is int and torch.cuda.is_available() else "cpu")
-
-# Load model checkpoint if specified
-model_state_dict,\
-optimizer_state_dict,\
-start_epoch,\
-best_loss = utils.load_checkpoint(args.resume)
-model_state_dict = utils.convert_state_dict_from_gpu(model_state_dict)
-
-# Create experiment directory
-if model_state_dict:
-    experiment_dir = os.path.split(args.resume)[0] # Use existing folder
-else:
-    experiment_dir = utils.make_dir_with_date(save_dir, "fastdepth") # New folder
-print("Saving results to ", experiment_dir)
-
-# Load the model
-model = models.MobileNetSkipAdd(output_size=(224, 224), pretrained=True)
-if model_state_dict:
-    model.load_state_dict(model_state_dict)
-
-# Use parallel GPUs if available
-os.environ["CUDA_VISIBLE_DEVICES"] = "0, 1, 2, 3" # Specify which GPUs to use on DGX
-num_gpus = len(os.environ["CUDA_VISIBLE_DEVICES"].split(','))
-if torch.cuda.device_count() > 1:
-  print("Let's use", num_gpus, "GPUs!")
-  model = nn.DataParallel(model)
-
-# Send model to GPU(s)
-# This must be done before optimizer is created if a model state_dict is being loaded
-model.to(device)
-
-# NOT currently in use
-def log_l1_loss(output, target):
-    loss = torch.mean(torch.abs(torch.log(output - target)))
-    return loss
-
-# Loss & Optimizer
-if loss_type == "L2":
-    criterion = torch.nn.MSELoss()
-    print("Using L2 Loss")
-else:
-    criterion = torch.nn.L1Loss()
-    print("Using L1 Loss")
-
-optimizer = optim.SGD(model.parameters(),
-                      lr=optimizer["lr"],
-                      momentum=optimizer["momentum"],
-                      weight_decay=optimizer["weight_decay"])
-
-if optimizer_state_dict:
-    optimizer.load_state_dict(optimizer_state_dict)
-
-# Load optimizer tensors onto GPU if necessary
-utils.optimizer_to_gpu(optimizer)
-
-# To catch and handle Ctrl-C interrupt
-try:
-    train_step = 0
-    val_step = 0
-    for epoch in range(num_epochs):
-        current_epoch = start_epoch + epoch + 1
-
-        epoch_loss = 0.0
-        running_loss = 0.0
-        average = AverageMeter()
-        img_idxs = np.random.randint(0, len(train_loader), size=5)
-
-        model.train()
-        with experiment.train():
-            for i, (inputs, targets) in enumerate(train_loader):
-                # Send data to GPU
-                inputs, targets = inputs.to(device), targets.to(device)
-
-                # Zero the parameter gradients
-                optimizer.zero_grad()
-
-                # Predict
-                outputs = model(inputs)
-
-                # Loss and backprop
-                loss = criterion(outputs, targets)
-                loss.backward()
-                optimizer.step()
-
-                # Calculate metrics
-                result = Result()
-                result.evaluate(outputs.data, targets.data)
-                average.update(result, 0, 0, inputs.size(0))
-                epoch_loss += loss.item()
-
-                # Log to Comet
-                utils.log_comet_metrics(experiment, result, loss.item(), step=train_step, epoch=current_epoch)
-                train_step += 1
-
-                # Log images to Comet
-                if i in img_idxs:
-                    utils.log_image_to_comet(inputs[0], targets[0], outputs[0], epoch, i, experiment, "train")
-
-                # Print statistics
-                running_loss += loss.item()
-                if (i + 1) % stats_frequency == 0 and i != 0:
-                    print('[%d, %5d] loss: %.3f' %
-                        (current_epoch, i + 1, running_loss / stats_frequency))
-                    running_loss = 0.0
-            
-            # Log epoch metrics to Comet
-            mean_train_loss = epoch_loss/len(train_dataset)
-            utils.log_comet_metrics(experiment, average.average(), mean_train_loss,
-                                    prefix="epoch", step=train_step, epoch=current_epoch)
-
-        # Validation each epoch
-        epoch_loss = 0.0
-        average = AverageMeter()
-        with experiment.validate():
-            with torch.no_grad():
-                img_idxs = np.random.randint(0, len(val_loader), size=5)
-                model.eval()
-                for i, (inputs, targets) in enumerate(val_loader):
-                    inputs, targets = inputs.to(device), targets.to(device)
+                    # Zero the parameter gradients
+                    optimizer.zero_grad()
 
                     # Predict
                     outputs = model(inputs)
 
-                    # Loss
+                    # Loss and backprop
                     loss = criterion(outputs, targets)
+                    loss.backward()
+                    optimizer.step()
 
                     # Calculate metrics
                     result = Result()
@@ -227,43 +58,95 @@ try:
                     epoch_loss += loss.item()
 
                     # Log to Comet
-                    utils.log_comet_metrics(experiment, result, loss.item(), step=val_step, epoch=current_epoch)
-                    val_step += 1
+                    utils.log_comet_metrics(experiment, result, loss.item(), step=train_step, epoch=current_epoch)
+                    train_step += 1
 
                     # Log images to Comet
                     if i in img_idxs:
-                        utils.log_image_to_comet(inputs[0], targets[0], outputs[0], epoch, i, experiment, "val")
+                        utils.log_image_to_comet(inputs[0], targets[0], outputs[0], epoch, i, experiment, "train")
 
+                    # Print statistics
+                    running_loss += loss.item()
+                    if (i + 1) % params["stats_frequency"] == 0 and i != 0:
+                        print('[%d, %5d] loss: %.3f' %
+                            (current_epoch, i + 1, running_loss / params["stats_frequency"]))
+                        running_loss = 0.0
+                
                 # Log epoch metrics to Comet
-                mean_val_loss = epoch_loss / len(val_loader)
-                utils.log_comet_metrics(experiment, average.average(), mean_val_loss,
-                                        prefix="epoch", step=val_step, epoch=current_epoch)
-                print("Validation Loss [%d]: %.3f" % (current_epoch, mean_val_loss))
+                mean_train_loss = epoch_loss/params["num_training_examples"]
+                utils.log_comet_metrics(experiment, average.average(), mean_train_loss,
+                                        prefix="epoch", step=train_step, epoch=current_epoch)
 
-        # Save periodically
-        if (epoch + 1) % save_frequency == 0:
-            save_path = utils.get_save_path(current_epoch, experiment_dir)
-            utils.save_model(model, optimizer, save_path, current_epoch, mean_val_loss, max_checkpoints)
-            experiment.log_model(save_path.split("/")[-1], save_path)
-            print("Saving new checkpoint")
-        
-        experiment.log_epoch_end(current_epoch)
+            # Validation each epoch
+            epoch_loss = 0.0
+            average = AverageMeter()
+            with experiment.validate():
+                with torch.no_grad():
+                    img_idxs = np.random.randint(0, len(val_loader), size=5)
+                    model.eval()
+                    for i, (inputs, targets) in enumerate(val_loader):
+                        inputs, targets = inputs.to(params["device"]), targets.to(params["device"])
 
-    print("Finished training")
+                        # Predict
+                        outputs = model(inputs)
 
-    # Save the final model
-    save_path = utils.get_save_path(num_epochs, experiment_dir)
-    utils.save_model(model, optimizer, save_path, current_epoch, mean_val_loss, max_checkpoints)
-    experiment.log_model(save_path.split("/")[-1], save_path)
-    print("Model saved to ", os.path.abspath(save_path))
+                        # Loss
+                        loss = criterion(outputs, targets)
 
+                        # Calculate metrics
+                        result = Result()
+                        result.evaluate(outputs.data, targets.data)
+                        average.update(result, 0, 0, inputs.size(0))
+                        epoch_loss += loss.item()
+
+                        # Log to Comet
+                        utils.log_comet_metrics(experiment, result, loss.item(), step=val_step, epoch=current_epoch)
+                        val_step += 1
+
+                        # Log images to Comet
+                        if i in img_idxs:
+                            utils.log_image_to_comet(inputs[0], targets[0], outputs[0], epoch, i, experiment, "val")
+
+                    # Log epoch metrics to Comet
+                    mean_val_loss = epoch_loss / len(val_loader)
+                    utils.log_comet_metrics(experiment, average.average(), mean_val_loss,
+                                            prefix="epoch", step=val_step, epoch=current_epoch)
+                    print("Validation Loss [%d]: %.3f" % (current_epoch, mean_val_loss))
+
+            # Save periodically
+            if (epoch + 1) % params["save_frequency"] == 0:
+                save_path = utils.get_save_path(current_epoch, params["experiment_dir"])
+                utils.save_model(model, optimizer, save_path, current_epoch, mean_val_loss, params["max_checkpoints"])
+                experiment.log_model(save_path.split("/")[-1], save_path)
+                print("Saving new checkpoint")
+            
+            experiment.log_epoch_end(current_epoch)
+
+        print("Finished training")
+
+        # Save the final model
+        save_path = utils.get_save_path(params["num_epochs"], params["experiment_dir"])
+        utils.save_model(model, optimizer, save_path, current_epoch, mean_val_loss, params["max_checkpoints"])
+        experiment.log_model(save_path.split("/")[-1], save_path)
+        print("Model saved to ", os.path.abspath(save_path))
+
+    except KeyboardInterrupt:
+        print("Saving model and quitting...")
+        save_path = utils.get_save_path(current_epoch, params["experiment_dir"])
+        utils.save_model(model, optimizer, save_path, current_epoch, mean_val_loss, params["max_checkpoints"])
+        experiment.log_model(save_path.split("/")[-1], save_path)
+        print("Model saved to ", os.path.abspath(save_path))
+
+
+def evaluate(params, loader, model, criterion, experiment):
     print("Testing...")
     with experiment.test():
+        running_loss = 0.0
         total_loss = 0.0
         average = AverageMeter()
-        img_idxs = np.random.randint(0, len(test_loader), size=min(len(test_loader), 50))
-        for i, (inputs, targets) in enumerate(test_loader):
-            inputs, targets = inputs.to(device), targets.to(device)
+        img_idxs = np.random.randint(0, len(loader), size=min(len(loader), 50))
+        for i, (inputs, targets) in enumerate(loader):
+            inputs, targets = inputs.to(params["device"]), targets.to(params["device"])
 
             # Predict
             outputs = model(inputs)
@@ -280,14 +163,157 @@ try:
             if i in img_idxs:
                 utils.log_image_to_comet(inputs[0], targets[0], outputs[0], 0, i, experiment, "test")
 
+            running_loss += loss.item()
+            if (i + 1) % params["stats_frequency"] == 0 and i != 0:
+                print('[{}/{}] loss: {:.3f}'.format(i + 1, len(loader), running_loss / params["stats_frequency"]))
+                running_loss = 0.0
+
         # Mean validation loss
-        mean_loss = total_loss / len(test_loader)
+        mean_loss = total_loss / len(loader)
         utils.log_comet_metrics(experiment, average.average(), mean_loss) 
         print("Average Test Loss: %.3f" % (mean_loss))
 
-except KeyboardInterrupt:
-    print("Saving model and quitting...")
-    save_path = utils.get_save_path(current_epoch, experiment_dir)
-    utils.save_model(model, optimizer, save_path, current_epoch, mean_val_loss, max_checkpoints)
-    experiment.log_model(save_path.split("/")[-1], save_path)
-    print("Model saved to ", os.path.abspath(save_path))
+
+def main(args):
+
+    # Load hyperparameters from JSON
+    params = utils.load_training_parameters(params_file)
+
+    # Params to log to Comet
+    hyper_params = {
+        "learning_rate" : params["optimizer"]["lr"],
+        "momentum" : params["optimizer"]["momentum"],
+        "weight_decay" : params["optimizer"]["weight_decay"],
+        "optimizer" : params["optimizer"]["type"],
+        "loss" : params["loss"],
+        "num_epochs" : params["num_epochs"],
+        "batch_size" : params["batch_size"],
+        "train_val_split" : params["train_val_split"][0],
+        "depth_max" : params["depth_max"]
+    }
+
+    # Create Comet experiment
+    experiment = Experiment(api_key = "Bq3mQixNCv2jVzq2YBhLdxq9A", project_name="fastdepth")
+    experiment.log_parameters(hyper_params)
+    experiment.add_tag(params["loss"])
+
+    # Convert from JSON format to DataLoader format
+    params["training_dataset_paths"] = utils.format_dataset_path(params["training_dataset_paths"])
+    params["test_dataset_paths"] = utils.format_dataset_path(params["test_dataset_paths"])
+
+    training_folders = ", ".join(params["training_dataset_paths"])
+    test_folders = ", ".join(params["test_dataset_paths"])
+    experiment.log_dataset_info(path=training_folders)                                         
+    experiment.log_other("test_dataset_info", test_folders)
+
+    # Create dataset
+    print("Loading the dataset...")
+    dataset = Datasets.FastDepthDataset(params["training_dataset_paths"],
+                                        split='train',
+                                        depthMin=params["depth_min"],
+                                        depthMax=params["depth_max"],
+                                        input_shape_model=(224, 224))
+
+    test_dataset = Datasets.FastDepthDataset(params["test_dataset_paths"],
+                                        split='val',
+                                        depthMin=params["depth_min"],
+                                        depthMax=params["depth_max"],
+                                        input_shape_model=(224, 224))
+
+    # Make training/validation split
+    train_val_split_lengths = utils.get_train_val_split_lengths(params["train_val_split"], len(dataset))
+    train_dataset, val_dataset = torch.utils.data.random_split(dataset, train_val_split_lengths)
+    print("Train/val split: ", train_val_split_lengths)
+    params["num_training_examples"] = len(train_dataset)
+
+    # DataLoaders
+    train_loader = torch.utils.data.DataLoader(train_dataset,
+                                            batch_size=params["batch_size"],
+                                            shuffle=True,
+                                            num_workers=params["num_workers"],
+                                            pin_memory=True)
+
+    val_loader = torch.utils.data.DataLoader(val_dataset,
+                                            batch_size=params["batch_size"],
+                                            shuffle=True,
+                                            num_workers=params["num_workers"],
+                                            pin_memory=True)
+
+    test_loader = torch.utils.data.DataLoader(test_dataset,
+                                            batch_size=params["batch_size"],
+                                            shuffle=False,
+                                            num_workers=params["num_workers"],
+                                            pin_memory=True)
+
+    # Configure GPU
+    params["device"] = torch.device("cuda:{}".format(params["device"]) if type(params["device"]) is int and torch.cuda.is_available() else "cpu")
+
+    # Load model checkpoint if specified
+    model_state_dict,\
+    optimizer_state_dict,\
+    params["start_epoch"], _ = utils.load_checkpoint(args.resume)
+    model_state_dict = utils.convert_state_dict_from_gpu(model_state_dict)
+
+    # Create experiment directory
+    if model_state_dict:
+        experiment_dir = os.path.split(args.resume)[0] # Use existing folder
+    else:
+        experiment_dir = utils.make_dir_with_date(params["save_dir"], "fastdepth") # New folder
+    print("Saving results to ", experiment_dir)
+    params["experiment_dir"] = experiment_dir
+
+    # Load the model
+    model = models.MobileNetSkipAdd(output_size=(224, 224), pretrained=True)
+    if model_state_dict:
+        model.load_state_dict(model_state_dict)
+
+    # Use parallel GPUs if available
+    os.environ["CUDA_VISIBLE_DEVICES"] = "0, 1, 2, 3" # Specify which GPUs to use on DGX
+    num_gpus = len(os.environ["CUDA_VISIBLE_DEVICES"].split(','))
+    if torch.cuda.device_count() > 1:
+        print("Let's use", num_gpus, "GPUs!")
+    model = nn.DataParallel(model)
+
+    # Send model to GPU(s)
+    # This must be done before optimizer is created if a model state_dict is being loaded
+    model.to(params["device"])
+
+    # NOT currently in use
+    def log_l1_loss(output, target):
+        loss = torch.mean(torch.abs(torch.log(output - target)))
+        return loss
+
+    # Loss & Optimizer
+    if params["loss"] == "L2":
+        criterion = torch.nn.MSELoss()
+        print("Using L2 Loss")
+    else:
+        criterion = torch.nn.L1Loss()
+        print("Using L1 Loss")
+
+    optimizer = optim.SGD(model.parameters(),
+                        lr=params["optimizer"]["lr"],
+                        momentum=params["optimizer"]["momentum"],
+                        weight_decay=params["optimizer"]["weight_decay"])
+
+    if optimizer_state_dict:
+        optimizer.load_state_dict(optimizer_state_dict)
+
+    # Load optimizer tensors onto GPU if necessary
+    utils.optimizer_to_gpu(optimizer)
+
+    train(params, train_loader, val_loader, model, criterion, optimizer, experiment)
+
+    test_params = { 
+        "device" : params["device"],
+        "stats_frequency" : params["stats_frequency"]
+    }
+    evaluate(test_params, test_loader, model, criterion, experiment)
+
+if __name__ == "__main__":
+    # Parse command args
+    parser = argparse.ArgumentParser(description='FastDepth Training')
+    parser.add_argument('--resume', type=str, default=None,
+                        help="Path to model checkpoint to resume training.")
+    args = parser.parse_args()
+    main(args)
