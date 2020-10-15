@@ -173,7 +173,7 @@ def train(params, train_loader, val_loader, model, criterion, optimizer, experim
     try:
         train_step = 0
         val_step = 0
-        for epoch in range(params["num_epochs"]):
+        for epoch in range(params["num_epochs"] - params["start_epoch"]):
             current_epoch = params["start_epoch"] + epoch + 1
 
             epoch_loss = 0.0
