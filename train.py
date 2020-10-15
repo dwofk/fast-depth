@@ -16,8 +16,8 @@ from metrics import AverageMeter, Result
 params_file = "parameters.json"
 
 # Import custom Dataset
-#DATASET_ABS_PATH = "/workspace/mnt/repositories/bayesian-visual-odometry/scripts"
-DATASET_ABS_PATH = "/workspace/data/alex/bayesian-visual-odometry/scripts"
+DATASET_ABS_PATH = "/workspace/mnt/repositories/bayesian-visual-odometry/scripts"
+# DATASET_ABS_PATH = "/workspace/data/alex/bayesian-visual-odometry/scripts"
 sys.path.append(DATASET_ABS_PATH)
 import Datasets
 
@@ -48,6 +48,11 @@ experiment.add_tag(str(loss_type))
 # Convert from JSON format to DataLoader format
 training_dir = utils.format_dataset_path(training_dir)
 test_dir = utils.format_dataset_path(test_dir)
+
+training_folders = ", ".join(training_dir)
+test_folders = ", ".join(test_dir)
+experiment.log_dataset_info(path=training_folders)                                         
+experiment.log_other("test_dataset_info", test_folders)
 
 # Create dataset
 print("Loading the dataset...")
@@ -146,15 +151,18 @@ utils.optimizer_to_gpu(optimizer)
 
 # To catch and handle Ctrl-C interrupt
 try:
-    with experiment.train():
-        train_step = 0
-        val_step = 0
-        for epoch in range(num_epochs):
-            experiment.log_current_epoch(epoch)
-            current_epoch = start_epoch + epoch + 1
-            running_loss = 0.0
-            model.train()
-            img_idxs = np.random.randint(0, len(train_loader), size=5)
+    train_step = 0
+    val_step = 0
+    for epoch in range(num_epochs):
+        current_epoch = start_epoch + epoch + 1
+
+        epoch_loss = 0.0
+        running_loss = 0.0
+        average = AverageMeter()
+        img_idxs = np.random.randint(0, len(train_loader), size=5)
+
+        model.train()
+        with experiment.train():
             for i, (inputs, targets) in enumerate(train_loader):
                 # Send data to GPU
                 inputs, targets = inputs.to(device), targets.to(device)
@@ -170,17 +178,17 @@ try:
                 loss.backward()
                 optimizer.step()
 
+                # Calculate metrics
                 result = Result()
                 result.evaluate(outputs.data, targets.data)
+                average.update(result, 0, 0, inputs.size(0))
+                epoch_loss += loss.item()
 
                 # Log to Comet
-                experiment.log_metric("loss", loss.item(), step=train_step)
-                experiment.log_metric("rmse", result.rmse, step=train_step)
-                experiment.log_metric("mae", result.mae, step=train_step)
-                experiment.log_metric("delta1", result.delta1, step=train_step)
+                utils.log_comet_metrics(experiment, result, loss.item(), step=train_step, epoch=current_epoch)
                 train_step += 1
 
-                # Save some images for Comet
+                # Log images to Comet
                 if i in img_idxs:
                     utils.log_image_to_comet(inputs[0], targets[0], outputs[0], epoch, i, experiment, "train")
 
@@ -190,9 +198,16 @@ try:
                     print('[%d, %5d] loss: %.3f' %
                         (current_epoch, i + 1, running_loss / stats_frequency))
                     running_loss = 0.0
+            
+            # Log epoch metrics to Comet
+            mean_train_loss = epoch_loss/len(train_dataset)
+            utils.log_comet_metrics(experiment, average.average(), mean_train_loss,
+                                    prefix="epoch", step=train_step, epoch=current_epoch)
 
-            # Validation each epoch
-            running_val_loss = 0.0
+        # Validation each epoch
+        epoch_loss = 0.0
+        average = AverageMeter()
+        with experiment.validate():
             with torch.no_grad():
                 img_idxs = np.random.randint(0, len(val_loader), size=5)
                 model.eval()
@@ -203,44 +218,49 @@ try:
                     outputs = model(inputs)
 
                     # Loss
-                    val_loss = criterion(outputs, targets)
+                    loss = criterion(outputs, targets)
 
-                    running_val_loss += val_loss.item()
+                    # Calculate metrics
                     result = Result()
                     result.evaluate(outputs.data, targets.data)
+                    average.update(result, 0, 0, inputs.size(0))
+                    epoch_loss += loss.item()
 
-                    # Save some images for Comet
+                    # Log to Comet
+                    utils.log_comet_metrics(experiment, result, loss.item(), step=val_step, epoch=current_epoch)
+                    val_step += 1
+
+                    # Log images to Comet
                     if i in img_idxs:
                         utils.log_image_to_comet(inputs[0], targets[0], outputs[0], epoch, i, experiment, "val")
 
-                    experiment.log_metric("val_loss", val_loss.item(), step=val_step)
-                    experiment.log_metric("rmse", result.rmse, step=train_step)
-                    experiment.log_metric("mae", result.mae, step=train_step)
-                    experiment.log_metric("delta1", result.delta1, step=train_step)
-
-                    val_step += 1
-
-                # Mean validation loss
-                mean_val_loss = running_val_loss / len(val_loader)
+                # Log epoch metrics to Comet
+                mean_val_loss = epoch_loss / len(val_loader)
+                utils.log_comet_metrics(experiment, average.average(), mean_val_loss,
+                                        prefix="epoch", step=val_step, epoch=current_epoch)
                 print("Validation Loss [%d]: %.3f" % (current_epoch, mean_val_loss))
 
-            # Save periodically
-            if (epoch + 1) % save_frequency == 0:
-                save_path = utils.get_save_path(current_epoch, experiment_dir)
-                utils.save_model(model, optimizer, save_path, current_epoch, best_loss, max_checkpoints)
-                print("Saving new checkpoint")
+        # Save periodically
+        if (epoch + 1) % save_frequency == 0:
+            save_path = utils.get_save_path(current_epoch, experiment_dir)
+            utils.save_model(model, optimizer, save_path, current_epoch, mean_val_loss, max_checkpoints)
+            experiment.log_model(save_path.split("/")[-1], save_path)
+            print("Saving new checkpoint")
+        
+        experiment.log_epoch_end(current_epoch)
 
     print("Finished training")
 
     # Save the final model
     save_path = utils.get_save_path(num_epochs, experiment_dir)
     utils.save_model(model, optimizer, save_path, current_epoch, mean_val_loss, max_checkpoints)
+    experiment.log_model(save_path.split("/")[-1], save_path)
     print("Model saved to ", os.path.abspath(save_path))
 
+    print("Testing...")
     with experiment.test():
-        model.eval()
-        running_loss = 0.0
-        average_meter = AverageMeter()
+        total_loss = 0.0
+        average = AverageMeter()
         img_idxs = np.random.randint(0, len(test_loader), size=min(len(test_loader), 50))
         for i, (inputs, targets) in enumerate(test_loader):
             inputs, targets = inputs.to(device), targets.to(device)
@@ -250,29 +270,24 @@ try:
 
             # Loss
             loss = criterion(outputs, targets)
-            running_loss += loss.item()
+            total_loss += loss.item()
 
             result = Result()
             result.evaluate(outputs.data, targets.data)
-            average_meter.update(result, 0, 0, inputs.size(0))
+            average.update(result, 0, 0, inputs.size(0))
 
             # Log images to comet
             if i in img_idxs:
                 utils.log_image_to_comet(inputs[0], targets[0], outputs[0], 0, i, experiment, "test")
 
         # Mean validation loss
-        mean_loss = running_loss / len(test_loader)
+        mean_loss = total_loss / len(test_loader)
+        utils.log_comet_metrics(experiment, average.average(), mean_loss) 
         print("Average Test Loss: %.3f" % (mean_loss))
-
-        average = average_meter.average()
-        experiment.log_metric("loss", mean_loss)
-        experiment.log_metric("average_rmse", average.rmse)
-        experiment.log_metric("average_mae", average.mae)
-        experiment.log_metric("average_delta1", average.delta1)
 
 except KeyboardInterrupt:
     print("Saving model and quitting...")
-
     save_path = utils.get_save_path(current_epoch, experiment_dir)
     utils.save_model(model, optimizer, save_path, current_epoch, mean_val_loss, max_checkpoints)
+    experiment.log_model(save_path.split("/")[-1], save_path)
     print("Model saved to ", os.path.abspath(save_path))

@@ -135,11 +135,6 @@ def merge_into_row_with_gt(input, depth_input, depth_target, depth_pred):
 
     return img_merge
 
-def log_image_to_comet(input, target, output, epoch, id, experiment, prefix):
-    img_merge = merge_into_row(input, target, output)
-    img_name = "{}_epoch_{}_id_{}".format(prefix, epoch, id)
-    experiment.log_image(img_merge, name=img_name)
-
 def add_row(img_merge, row):
     return np.vstack([img_merge, row])
 
@@ -234,10 +229,7 @@ def load_checkpoint(model_path):
 
 
 def get_save_path(epoch, save_dir="./results"):
-    time = datetime.datetime.now()
-    save_path = os.path.join(save_dir, "fastdepth_{time}_epoch_{epoch}.pth".format(time=time.strftime("%m_%d_%H_%M"),
-                                                                                   epoch=str(epoch).zfill(4)))
-
+    save_path = os.path.join(save_dir, "model_{}.pth".format(str(epoch).zfill(4)))
     return save_path
 
 
@@ -265,15 +257,18 @@ def optimizer_to_gpu(optimizer):
                 state[k] = v.cuda()
 
 def convert_state_dict_from_gpu(state_dict):
-    new_state_dict = OrderedDict()
-    for k, v in state_dict.items():
-        if ("module" in k):
-            name = k[7:]  # remove `module.`
-        else:
-            name = k
-        new_state_dict[name] = v
+    if state_dict:
+        new_state_dict = OrderedDict()
+        for k, v in state_dict.items():
+            if ("module" in k):
+                name = k[7:]  # remove `module.`
+            else:
+                name = k
+            new_state_dict[name] = v
 
-    return new_state_dict
+        return new_state_dict
+    else:
+        return state_dict
 
 
 def save_losses_plot(path, num_epochs, losses, title):
@@ -284,3 +279,17 @@ def save_losses_plot(path, num_epochs, losses, title):
     plt.ylabel("{} Loss (m)".format(title))
     plt.title("{} Loss".format(title))
     plt.savefig(path, bbox_inches="tight")
+
+def log_comet_metrics(experiment, result, loss, prefix=None, step=None, epoch=None):
+    metrics = {
+        "loss" : loss,
+        "rmse" : result.rmse,
+        "mae" : result.mae,
+        "delta1" : result.delta1
+    }
+    experiment.log_metrics(metrics, prefix=prefix, step=step, epoch=epoch)
+
+def log_image_to_comet(input, target, output, epoch, id, experiment, prefix):
+    img_merge = merge_into_row(input, target, output)
+    img_name = "{}_epoch_{}_id_{}".format(prefix, epoch, id)
+    experiment.log_image(img_merge, name=img_name)
