@@ -171,8 +171,18 @@ def format_dataset_path(dataset_paths):
 
 def make_dir_with_date(root_dir, prefix):
     time = datetime.datetime.now()
+    
+    pid = None
+    try:
+        pid = os.environ["COMET_OPTIMIZER_PROCESS_ID"]
+    except KeyError:
+        pass
+    
     date_dir = os.path.join(root_dir, prefix + "_" +
-                            time.strftime("%m_%d_%H_%M"))
+                                time.strftime("%m_%d_%H_%M")) 
+    if pid:
+        date_dir += "_opt_{}".format(pid)
+        
     if not os.path.exists(date_dir):
         os.makedirs(date_dir)
     return date_dir
