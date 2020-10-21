@@ -22,7 +22,6 @@ import Datasets
 fieldnames = ['rmse', 'mae', 'delta1', 'absrel',
               'lg10', 'mse', 'delta2', 'delta3', 'data_time', 'gpu_time']
 
-
 def main(args):
 
     # Data loading code
@@ -32,7 +31,7 @@ def main(args):
         val_dataset = NYUDataset(args.directory, split='val')
     elif args.data == "unreal":
         val_dataset = Datasets.FastDepthDataset(
-            { args.directory }, split='val', input_shape_model=(224, 224))
+            { args.directory }, split='val', input_shape_model=(224, 224), depthMax = args.max_depth)
 
     # set batch size to be 1 for validation
     val_loader = torch.utils.data.DataLoader(val_dataset,
@@ -168,6 +167,8 @@ if __name__ == '__main__':
                         help="Directory of images to evaluate.")
     parser.add_argument('-j', '--workers', default=16, type=int, metavar='N',
                         help='number of data loading workers (default: 16)')
+    parser.add_argument('--max-depth', type=int, default=25,
+                        help="Maximum depth for ground truth.")
     parser.add_argument('--print-freq', '-p', default=50, type=int,
                         metavar='N', help='print frequency (default: 50)')
     parser.add_argument('--gpu', default=-1, type=int,
