@@ -124,7 +124,10 @@ def set_up_experiment(params, experiment, resume=None):
     # Load optimizer tensors onto GPU if necessary
     utils.optimizer_to_gpu(optimizer)
 
-    return params, train_loader, val_loader, test_loader, model, criterion, optimizer
+    # LR Scheduler
+    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.1)
+    
+    return params, train_loader, val_loader, test_loader, model, criterion, optimizer, scheduler
 
 
 def load_dataset(params):
@@ -132,8 +135,8 @@ def load_dataset(params):
     print("Loading the dataset...")
 
     if params['NYU']:
-        dataset = NYUDataset("../data/train", split='train')
-        test_dataset = NYUDataset("../data/val", split='val')
+        dataset = NYUDataset("../data/nyudepthv2/train", split='train')
+        test_dataset = NYUDataset("../data/nyudepthv2/val", split='val')
     else:
         dataset = Datasets.FastDepthDataset(params["training_dataset_paths"],
                                             split='train',
@@ -192,7 +195,7 @@ def load_model(params, resume=None):
     return model, optimizer_state_dict
     
 
-def train(params, train_loader, val_loader, model, criterion, optimizer, experiment):
+def train(params, train_loader, val_loader, model, criterion, optimizer, scheduler, experiment):
     mean_val_loss = -1
     try:
         train_step = 0
@@ -301,6 +304,7 @@ def train(params, train_loader, val_loader, model, criterion, optimizer, experim
                 print("Saving new checkpoint")
 
             experiment.log_epoch_end(current_epoch)
+            scheduler.step()
 
         print("Finished training")
 
@@ -366,7 +370,7 @@ def main(args):
 
     # Create Comet experiment
     experiment = Experiment(
-        api_key="Bq3mQixNCv2jVzq2YBhLdxq9A", project_name="fastdepth")
+        api_key="jBFVYFo9VUsy0kb0lioKXfTmM", project_name="fastdepth")
 
     if (args.tag):
         experiment.add_tag(args.tag)
@@ -375,11 +379,11 @@ def main(args):
     params["NYU"] = args.nyu
 
     params, train_loader, val_loader, test_loader, \
-        model, criterion, optimizer = set_up_experiment(
+        model, criterion, optimizer, scheduler = set_up_experiment(
             params, experiment, args.resume)
 
     train(params, train_loader, val_loader,
-          model, criterion, optimizer, experiment)
+          model, criterion, optimizer, scheduler, experiment)
 
     evaluate(params, test_loader, model, criterion, experiment)
 
