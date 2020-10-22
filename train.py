@@ -86,10 +86,20 @@ def set_up_experiment(params, experiment, resume=None):
     # This must be done before optimizer is created if a model state_dict is being loaded
     model.to(params["device"])
 
+    def log_l1_loss(output, target):
+        y = output - target
+        alpha = torch.mean(y.pow(2))
+        beta = 0.5 * (1 / output.size()[0] ** 2) * torch.sum(y).pow(2)
+        loss = alpha - beta
+        return loss
+
     # Loss & Optimizer
     if params["loss"] == "L2":
         criterion = torch.nn.MSELoss()
         print("Using L2 Loss")
+    elif params["loss"] == "log":
+        criterion = log_l1_loss
+        print("Using Log L1 Loss")
     else:
         criterion = torch.nn.L1Loss()
         print("Using L1 Loss")
