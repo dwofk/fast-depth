@@ -13,12 +13,13 @@ import models
 import utils
 import matplotlib.pyplot as plt
 from metrics import AverageMeter, Result
+from dataloaders.nyu import NYUDataset
 
 params_file = "parameters.json"
 
 # Import custom Dataset
-DATASET_ABS_PATH = "/workspace/mnt/repositories/bayesian-visual-odometry/scripts"
-# DATASET_ABS_PATH = "/workspace/data/alex/bayesian-visual-odometry/scripts"
+#DATASET_ABS_PATH = "/workspace/mnt/repositories/bayesian-visual-odometry/scripts"
+DATASET_ABS_PATH = "/workspace/data/alex/bayesian-visual-odometry/scripts"
 sys.path.append(DATASET_ABS_PATH)
 import Datasets
 
@@ -76,11 +77,14 @@ def set_up_experiment(params, experiment, resume=None):
 
     # Use parallel GPUs if available
     # Specify which GPUs to use on DGX
-    os.environ["CUDA_VISIBLE_DEVICES"] = "0, 1, 2, 3"
-    num_gpus = len(os.environ["CUDA_VISIBLE_DEVICES"].split(','))
-    if torch.cuda.device_count() > 1:
-        print("Let's use", num_gpus, "GPUs!")
-        model = nn.DataParallel(model)
+    try:
+        os.environ["CUDA_VISIBLE_DEVICES"] = "0, 1, 2, 3"
+        num_gpus = len(os.environ["CUDA_VISIBLE_DEVICES"].split(','))
+        if os.environ["USE_MULTIPLE_GPUS"] == "TRUE" and torch.cuda.device_count() > 1:
+            print("Let's use", num_gpus, "GPUs!")
+            model = nn.DataParallel(model)
+    except KeyError:
+        pass
 
     # Send model to GPU(s)
     # This must be done before optimizer is created if a model state_dict is being loaded
@@ -104,11 +108,16 @@ def set_up_experiment(params, experiment, resume=None):
         criterion = torch.nn.L1Loss()
         print("Using L1 Loss")
 
-    optimizer = optim.SGD(model.parameters(),
-                          lr=params["optimizer"]["lr"],
-                          momentum=params["optimizer"]["momentum"],
-                          weight_decay=params["optimizer"]["weight_decay"])
+    if params["optimizer"]["type"] == "sgd":
+        optimizer = optim.SGD(model.parameters(),
+                              lr=params["optimizer"]["lr"],
+                              momentum=params["optimizer"]["momentum"],
+                              weight_decay=params["optimizer"]["weight_decay"])
+    else:
+        optimizer = optim.Adam(model.parameters(),
+                               lr=params["optimizer"]["lr"])
 
+    experiment.add_tag(params["optimizer"]["type"])
     if optimizer_state_dict:
         optimizer.load_state_dict(optimizer_state_dict)
 
@@ -121,17 +130,22 @@ def set_up_experiment(params, experiment, resume=None):
 def load_dataset(params):
     # Create dataset
     print("Loading the dataset...")
-    dataset = Datasets.FastDepthDataset(params["training_dataset_paths"],
-                                        split='train',
-                                        depthMin=params["depth_min"],
-                                        depthMax=params["depth_max"],
-                                        input_shape_model=(224, 224))
 
-    test_dataset = Datasets.FastDepthDataset(params["test_dataset_paths"],
-                                             split='val',
-                                             depthMin=params["depth_min"],
-                                             depthMax=params["depth_max"],
-                                             input_shape_model=(224, 224))
+    if params['NYU']:
+        dataset = NYUDataset("../data/train", split='train')
+        test_dataset = NYUDataset("../data/val", split='val')
+    else:
+        dataset = Datasets.FastDepthDataset(params["training_dataset_paths"],
+                                            split='train',
+                                            depthMin=params["depth_min"],
+                                            depthMax=params["depth_max"],
+                                            input_shape_model=(224, 224))
+
+        test_dataset = Datasets.FastDepthDataset(params["test_dataset_paths"],
+                                                split='val',
+                                                depthMin=params["depth_min"],
+                                                depthMax=params["depth_max"],
+                                                input_shape_model=(224, 224))
 
     # Make training/validation split
     train_val_split_lengths = utils.get_train_val_split_lengths(
@@ -233,7 +247,7 @@ def train(params, train_loader, val_loader, model, criterion, optimizer, experim
                         running_loss = 0.0
 
                 # Log epoch metrics to Comet
-                mean_train_loss = epoch_loss/params["num_training_examples"]
+                mean_train_loss = epoch_loss/len(train_loader)
                 utils.log_comet_metrics(experiment, average.average(), mean_train_loss,
                                         prefix="epoch", step=train_step, epoch=current_epoch)
 
@@ -348,12 +362,17 @@ def evaluate(params, loader, model, criterion, experiment):
 
 
 def main(args):
+    os.environ["USE_MULTIPLE_GPUS"] = "TRUE"
 
     # Create Comet experiment
     experiment = Experiment(
         api_key="Bq3mQixNCv2jVzq2YBhLdxq9A", project_name="fastdepth")
 
+    if (args.tag):
+        experiment.add_tag(args.tag)
+    
     params = get_params(params_file)
+    params["NYU"] = args.nyu
 
     params, train_loader, val_loader, test_loader, \
         model, criterion, optimizer = set_up_experiment(
@@ -370,5 +389,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='FastDepth Training')
     parser.add_argument('--resume', type=str, default=None,
                         help="Path to model checkpoint to resume training.")
+    parser.add_argument('-t', '--tag', type=str, default=None,
+                        help='Extra tag to add to Comet experiment')
+    parser.add_argument('--nyu', type=int, default=0, help='whether to use NYU Depth V2 dataset.')                        
     args = parser.parse_args()
     main(args)
