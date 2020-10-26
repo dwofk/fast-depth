@@ -125,7 +125,7 @@ def set_up_experiment(params, experiment, resume=None):
     utils.optimizer_to_gpu(optimizer)
 
     # LR Scheduler
-    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.1)
+    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=params["lr_epoch_step_size"], gamma=0.1)
     
     return params, train_loader, val_loader, test_loader, model, criterion, optimizer, scheduler
 
