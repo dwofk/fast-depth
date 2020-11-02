@@ -18,8 +18,8 @@ from dataloaders.nyu import NYUDataset
 params_file = "parameters.json"
 
 # Import custom Dataset
-#DATASET_ABS_PATH = "/workspace/mnt/repositories/bayesian-visual-odometry/scripts"
-DATASET_ABS_PATH = "/workspace/data/alex/bayesian-visual-odometry/scripts"
+DATASET_ABS_PATH = "/workspace/mnt/repositories/bayesian-visual-odometry/scripts"
+# DATASET_ABS_PATH = "/workspace/data/alex/bayesian-visual-odometry/scripts"
 sys.path.append(DATASET_ABS_PATH)
 import Datasets
 
@@ -141,15 +141,21 @@ def load_dataset(params):
     else:
         dataset = Datasets.FastDepthDataset(params["training_dataset_paths"],
                                             split='train',
-                                            depthMin=params["depth_min"],
-                                            depthMax=params["depth_max"],
-                                            input_shape_model=(224, 224))
+                                            depth_min=params["depth_min"],
+                                            depth_max=params["depth_max"],
+                                            input_shape_model=(224, 224),
+                                            disparity=params["disparity"],
+                                            disparity_constant=params["disparity_constant"],
+                                            random_crop=params["random_crop"])
 
         test_dataset = Datasets.FastDepthDataset(params["test_dataset_paths"],
                                                 split='val',
-                                                depthMin=params["depth_min"],
-                                                depthMax=params["depth_max"],
-                                                input_shape_model=(224, 224))
+                                                depth_min=params["depth_min"],
+                                                depth_max=params["depth_max"],
+                                                input_shape_model=(224, 224),
+                                                disparity=params["disparity"],
+                                                disparity_constant=params["disparity_constant"],
+                                                random_crop=False)
 
     # Make training/validation split
     train_val_split_lengths = utils.get_train_val_split_lengths(
@@ -226,6 +232,11 @@ def train(params, train_loader, val_loader, model, criterion, optimizer, schedul
                     loss = criterion(outputs, targets)
                     loss.backward()
                     optimizer.step()
+
+                    if params["disparity"]:
+                        targets = (1 / targets) * params["disparity_constant"]
+                        outputs[outputs < params["depth_min"]] = params["depth_min"]
+                        outputs = (1 / outputs) * params["disparity_constant"]
 
                     # Calculate metrics
                     result = Result()
