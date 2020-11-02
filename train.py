@@ -3,7 +3,7 @@ import sys
 import json
 import argparse
 import numpy as np
-from comet_ml import Experiment
+from comet_ml import Experiment, ExistingExperiment
 import torch
 import torch.utils.data
 import torch.optim as optim
@@ -74,7 +74,8 @@ def set_up_experiment(params, experiment, resume=None):
             params["save_dir"], "fastdepth")  # New folder
     print("Saving results to ", experiment_dir)
     params["experiment_dir"] = experiment_dir
-
+    experiment.log_other("saved_model_directory", experiment_dir)
+    
     # Use parallel GPUs if available
     # Specify which GPUs to use on DGX
     try:
@@ -368,9 +369,12 @@ def evaluate(params, loader, model, criterion, experiment):
 def main(args):
     os.environ["USE_MULTIPLE_GPUS"] = "TRUE"
 
-    # Create Comet experiment
-    experiment = Experiment(
-        api_key="jBFVYFo9VUsy0kb0lioKXfTmM", project_name="fastdepth")
+    # Create Comet ML Experiment
+    if args.resume:
+        experiment_key = input("Enter Comet ML key of experiment to resume:")
+        experiment = ExistingExperiment(api_key="jBFVYFo9VUsy0kb0lioKXfTmM", previous_experiment=experiment_key)
+    else:
+        experiment = Experiment(api_key="jBFVYFo9VUsy0kb0lioKXfTmM", project_name="fastdepth")
 
     if (args.tag):
         experiment.add_tag(args.tag)
