@@ -1,13 +1,13 @@
 {
-    "training_dataset_paths" : "/workspace/mnt/datasets/unreal_data_sample",
-    "test_dataset_paths" : "/workspace/mnt/datasets/unreal_data_sample",
+    "training_dataset_paths" : "/workspace/data/unreal/training",
+    "test_dataset_paths" : "/workspace/data/unreal/validation",
     "train_val_split" : [99, 1],
     "depth_min" : 0.1,
-    "depth_max" : 25,
+    "depth_max" : 10,
     "disparity" : true,
-    "disparity_constant" : 25,
+    "disparity_constant" : 1,
     "random_crop" : false,
-    "batch_size" : 8,
+    "batch_size" : 256,
     "num_workers" : 6,
     "device" : 0,
     "loss" : "L1",
@@ -17,10 +17,10 @@
         "momentum" : 0.9,
         "weight_decay" : 0.0001
     },
-    "num_epochs" : 50,
+    "num_epochs" : 40,
     "stats_frequency" : 20,
-    "save_frequency" : 2,
+    "save_frequency" : 10,
     "save_dir" : "results/",
     "max_checkpoints" : 80,
-    "lr_epoch_step_size" : 25
+    "lr_epoch_step_size" : 20
 }

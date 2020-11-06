@@ -18,8 +18,8 @@ from dataloaders.nyu import NYUDataset
 params_file = "parameters.json"
 
 # Import custom Dataset
-DATASET_ABS_PATH = "/workspace/mnt/repositories/bayesian-visual-odometry/scripts"
-# DATASET_ABS_PATH = "/workspace/data/alex/bayesian-visual-odometry/scripts"
+#DATASET_ABS_PATH = "/workspace/mnt/repositories/bayesian-visual-odometry/scripts"
+DATASET_ABS_PATH = "/workspace/data/alex/bayesian-visual-odometry/scripts"
 sys.path.append(DATASET_ABS_PATH)
 import Datasets
 
@@ -79,7 +79,8 @@ def set_up_experiment(params, experiment, resume=None):
     # Use parallel GPUs if available
     # Specify which GPUs to use on DGX
     try:
-        os.environ["CUDA_VISIBLE_DEVICES"] = "0, 1, 2, 3"
+        if not os.environ["CUDA_VISIBLE_DEVICES"]:
+            os.environ["CUDA_VISIBLE_DEVICES"] = "0, 1, 2, 3"
         num_gpus = len(os.environ["CUDA_VISIBLE_DEVICES"].split(','))
         if os.environ["USE_MULTIPLE_GPUS"] == "TRUE" and torch.cuda.device_count() > 1:
             print("Let's use", num_gpus, "GPUs!")
@@ -229,15 +230,18 @@ def train(params, train_loader, val_loader, model, criterion, optimizer, schedul
                     outputs = model(inputs)
 
                     # Loss and backprop
-                    loss = criterion(outputs, targets)
+                    if params["disparity"]:
+                        #loss = criterion(outputs * params["disparity_constant"], targets * params["disparity_constant"])
+                        targets = (1 / targets)
+                        outputs[outputs < params["depth_min"]] = params["depth_min"]
+                        outputs = (1 / outputs)
+                        loss = criterion(outputs, targets)
+                    else:
+                        loss = criterion(outputs, targets)
+
                     loss.backward()
                     optimizer.step()
-
-                    if params["disparity"]:
-                        targets = (1 / targets) * params["disparity_constant"]
-                        outputs[outputs < params["depth_min"]] = params["depth_min"]
-                        outputs = (1 / outputs) * params["disparity_constant"]
-
+                        
                     # Calculate metrics
                     result = Result()
                     result.evaluate(outputs.data, targets.data)
@@ -281,8 +285,15 @@ def train(params, train_loader, val_loader, model, criterion, optimizer, schedul
                         outputs = model(inputs)
 
                         # Loss
-                        loss = criterion(outputs, targets)
-
+                        if params["disparity"]:
+                            #loss = criterion(outputs * params["disparity_constant"], targets * params["disparity_constant"])
+                            targets = (1 / targets)
+                            outputs[outputs < params["depth_min"]] = params["depth_min"]
+                            outputs = (1 / outputs)
+                            loss = criterion(outputs, targets)
+                        else:
+                            loss = criterion(outputs, targets)
+                        
                         # Calculate metrics
                         result = Result()
                         result.evaluate(outputs.data, targets.data)
@@ -341,40 +352,41 @@ def train(params, train_loader, val_loader, model, criterion, optimizer, schedul
 def evaluate(params, loader, model, criterion, experiment):
     print("Testing...")
     with experiment.test():
-        running_loss = 0.0
-        total_loss = 0.0
-        average = AverageMeter()
-        img_idxs = np.random.randint(0, len(loader), size=min(len(loader), 50))
-        for i, (inputs, targets) in enumerate(loader):
-            inputs, targets = inputs.to(
-                params["device"]), targets.to(params["device"])
+        with torch.no_grad():
+            running_loss = 0.0
+            total_loss = 0.0
+            average = AverageMeter()
+            img_idxs = np.random.randint(0, len(loader), size=min(len(loader), 50))
+            for i, (inputs, targets) in enumerate(loader):
+                inputs, targets = inputs.to(
+                    params["device"]), targets.to(params["device"])
 
-            # Predict
-            outputs = model(inputs)
+                # Predict
+                outputs = model(inputs)
 
-            # Loss
-            loss = criterion(outputs, targets)
-            total_loss += loss.item()
+                # Loss
+                loss = criterion(outputs, targets)
+                total_loss += loss.item()
 
-            result = Result()
-            result.evaluate(outputs.data, targets.data)
-            average.update(result, 0, 0, inputs.size(0))
+                result = Result()
+                result.evaluate(outputs.data, targets.data)
+                average.update(result, 0, 0, inputs.size(0))
 
-            # Log images to comet
-            if i in img_idxs:
-                utils.log_image_to_comet(
-                    inputs[0], targets[0], outputs[0], 0, i, experiment, "test")
+                # Log images to comet
+                if i in img_idxs:
+                    utils.log_image_to_comet(
+                        inputs[0], targets[0], outputs[0], 0, i, experiment, "test")
 
-            running_loss += loss.item()
-            if (i + 1) % params["stats_frequency"] == 0 and i != 0:
-                print('[{}/{}] loss: {:.3f}'.format(i + 1, len(loader),
-                                                    running_loss / params["stats_frequency"]))
-                running_loss = 0.0
+                    running_loss += loss.item()
+                    if (i + 1) % params["stats_frequency"] == 0 and i != 0:
+                        print('[{}/{}] loss: {:.3f}'.format(i + 1, len(loader),
+                                                            running_loss / params["stats_frequency"]))
+                        running_loss = 0.0
 
-        # Mean validation loss
-        mean_loss = total_loss / len(loader)
-        utils.log_comet_metrics(experiment, average.average(), mean_loss)
-        print("Average Test Loss: %.3f" % (mean_loss))
+                        # Mean validation loss
+                        mean_loss = total_loss / len(loader)
+                        utils.log_comet_metrics(experiment, average.average(), mean_loss)
+                        print("Average Test Loss: %.3f" % (mean_loss))
 
 
 def main(args):
@@ -387,8 +399,10 @@ def main(args):
     else:
         experiment = Experiment(api_key="jBFVYFo9VUsy0kb0lioKXfTmM", project_name="fastdepth")
 
-    if (args.tag):
+    if args.tag:
         experiment.add_tag(args.tag)
+    if args.name:
+        experiment.set_name(args.name)
     
     params = get_params(params_file)
     params["NYU"] = args.nyu
@@ -410,6 +424,8 @@ if __name__ == "__main__":
                         help="Path to model checkpoint to resume training.")
     parser.add_argument('-t', '--tag', type=str, default=None,
                         help='Extra tag to add to Comet experiment')
+    parser.add_argument('-n', '--name', type=str, default=None,
+                        help='Comet ML Experiment name')
     parser.add_argument('--nyu', type=int, default=0, help='whether to use NYU Depth V2 dataset.')                        
     args = parser.parse_args()
     main(args)
