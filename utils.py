@@ -141,9 +141,21 @@ def add_row(img_merge, row):
 
 def write_results(img, results):
     font = cv2.FONT_HERSHEY_SIMPLEX
-    rmse = "RMSE: {:.2f}m".format(results.rmse)
-    cv2.putText(img, rmse, (int(img.shape[1]/2) - 110, img.shape[0] - 5), font, 1, (255, 255, 255), 1)
 
+    blank = np.zeros(shape=(224, 224, 3), dtype=np.float32)
+    out = cv2.hconcat([img, blank])
+
+    rmse = "RMSE: {:.2f}m".format(results.rmse)
+    mae = "MAE: {:.2f}m".format(results.mae)
+    delta1 = "Delta1: {:.2f}m".format(results.delta1)
+    cv2.putText(out, rmse, (out.shape[1] - blank.shape[1], 30),
+                font, 1, (255, 255, 255), 1)
+    cv2.putText(out, mae, (out.shape[1] - blank.shape[1], 60),
+                font, 1, (255, 255, 255), 1)
+    cv2.putText(out, delta1, (out.shape[1] - blank.shape[1], 90),
+                font, 1, (255, 255, 255), 1)
+    
+    return out
 
 def save_image(img_merge, filename):
     img_merge = Image.fromarray(img_merge.astype('uint8'))
@@ -298,8 +310,9 @@ def log_comet_metrics(experiment, result, loss, prefix=None, step=None, epoch=No
     }
     experiment.log_metrics(metrics, prefix=prefix, step=step, epoch=epoch)
 
-def log_image_to_comet(input, target, output, epoch, id, experiment, prefix, step=None):
+def log_image_to_comet(input, target, output, epoch, id, experiment, result, prefix, step=None):
     img_merge = merge_into_row(input, target, output)
+    img_merge = utils.write_results(img_merge, result)
     log_merged_image_to_comet(img_merge, epoch, id, experiment, prefix, step)
 
 def log_merged_image_to_comet(img_merge, epoch, id, experiment, prefix, step=None):

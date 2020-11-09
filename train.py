@@ -278,7 +278,7 @@ def train(params, train_loader, val_loader, model, criterion, optimizer, schedul
                     # Log images to Comet
                     if i in img_idxs:
                         utils.log_image_to_comet(
-                            inputs[0], targets[0], outputs[0], current_epoch, i, experiment, "train", train_step)
+                            inputs[0], targets[0], outputs[0], current_epoch, i, experiment, result, "train", train_step)
 
                     # Print statistics
                     running_loss += loss.item()
@@ -329,7 +329,7 @@ def train(params, train_loader, val_loader, model, criterion, optimizer, schedul
                         # Log images to Comet
                         if i in img_idxs:
                             utils.log_image_to_comet(
-                                inputs[0], targets[0], outputs[0], current_epoch, i, experiment, "val", val_step)
+                                inputs[0], targets[0], outputs[0], current_epoch, i, experiment, result, "val", val_step)
 
                     # Log epoch metrics to Comet
                     mean_val_loss = epoch_loss / len(val_loader)
@@ -396,7 +396,7 @@ def evaluate(params, loader, model, criterion, experiment):
                 # Log images to comet
                 if i in img_idxs:
                     utils.log_image_to_comet(
-                        inputs[0], targets[0], outputs[0], 0, i, experiment, "test")
+                        inputs[0], targets[0], outputs[0], 0, i, experiment, result, "test")
 
                     running_loss += loss.item()
                     if (i + 1) % params["stats_frequency"] == 0 and i != 0:

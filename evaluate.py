@@ -15,8 +15,8 @@ import torch.backends.cudnn as cudnn
 import torch.optim
 cudnn.benchmark = True
 
-#dataset_path = "/workspace/mnt/repositories/bayesian-visual-odometry/scripts"
-dataset_path = "/workspace/data/alex/bayesian-visual-odometry/scripts"
+dataset_path = "/workspace/mnt/repositories/bayesian-visual-odometry/scripts"
+# dataset_path = "/workspace/data/alex/bayesian-visual-odometry/scripts"
 sys.path.append(dataset_path)
 import Datasets
 
@@ -115,8 +115,8 @@ def evaluate(params, loader, model, experiment):
                 # Log images to comet
                 if i in img_idxs:
                     img_merge = utils.merge_into_row(inputs[0], targets[0], outputs[0])
-                    if params["experiment_key"]:
-                        utils.log_merged_image_to_comet(img_merge, 0, i, experiment, "test")
+                    img_merge = utils.write_results(img_merge, result)
+                    utils.log_merged_image_to_comet(img_merge, 0, i, experiment, "test")
                     if params["save_images"]:                    
                         filename = os.path.join(params["experiment_dir"], \
                             "comparison_epoch_{}_{}.png".format(str(params["start_epoch"]), np.where(img_idxs == i)[0][0]))
