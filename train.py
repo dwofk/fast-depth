@@ -261,7 +261,7 @@ def train(params, train_loader, val_loader, model, criterion, optimizer, schedul
                     # Log images to Comet
                     if i in img_idxs:
                         utils.log_image_to_comet(
-                            inputs[0], targets[0], outputs[0], current_epoch, i, experiment, "train")
+                            inputs[0], targets[0], outputs[0], current_epoch, i, experiment, "train", train_step)
 
                     # Print statistics
                     running_loss += loss.item()
@@ -312,7 +312,7 @@ def train(params, train_loader, val_loader, model, criterion, optimizer, schedul
                         # Log images to Comet
                         if i in img_idxs:
                             utils.log_image_to_comet(
-                                inputs[0], targets[0], outputs[0], current_epoch, i, experiment, "val")
+                                inputs[0], targets[0], outputs[0], current_epoch, i, experiment, "val", val_step)
 
                     # Log epoch metrics to Comet
                     mean_val_loss = epoch_loss / len(val_loader)
