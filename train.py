@@ -18,8 +18,8 @@ from dataloaders.nyu import NYUDataset
 params_file = "parameters.json"
 
 # Import custom Dataset
-#DATASET_ABS_PATH = "/workspace/mnt/repositories/bayesian-visual-odometry/scripts"
-DATASET_ABS_PATH = "/workspace/data/alex/bayesian-visual-odometry/scripts"
+DATASET_ABS_PATH = "/workspace/mnt/repositories/bayesian-visual-odometry/scripts"
+# DATASET_ABS_PATH = "/workspace/data/alex/bayesian-visual-odometry/scripts"
 sys.path.append(DATASET_ABS_PATH)
 import Datasets
 
@@ -145,7 +145,7 @@ def load_dataset(params):
                                             depth_min=params["depth_min"],
                                             depth_max=params["depth_max"],
                                             input_shape_model=(224, 224),
-                                            disparity=params["disparity"],
+                                            disparity=params["predict_disparity"],
                                             disparity_constant=params["disparity_constant"],
                                             random_crop=params["random_crop"])
 
@@ -154,7 +154,7 @@ def load_dataset(params):
                                                 depth_min=params["depth_min"],
                                                 depth_max=params["depth_max"],
                                                 input_shape_model=(224, 224),
-                                                disparity=params["disparity"],
+                                                disparity=params["predict_disparity"],
                                                 disparity_constant=params["disparity_constant"],
                                                 random_crop=False)
 
@@ -202,6 +202,11 @@ def load_model(params, resume=None):
 
     return model, optimizer_state_dict
     
+def flip_depth(outputs, targets, params):
+    targets = (1 / targets)
+    outputs[outputs == 0] = 0.001
+    outputs = (1 / outputs)
+    return outputs, targets
 
 def train(params, train_loader, val_loader, model, criterion, optimizer, scheduler, experiment):
     mean_val_loss = -1
@@ -230,14 +235,40 @@ def train(params, train_loader, val_loader, model, criterion, optimizer, schedul
                     outputs = model(inputs)
 
                     # Loss and backprop
-                    if params["disparity"]:
-                        #loss = criterion(outputs * params["disparity_constant"], targets * params["disparity_constant"])
+                    if params["predict_disparity"]:
                         targets = (1 / targets)
                         outputs[outputs < params["depth_min"]] = params["depth_min"]
                         outputs = (1 / outputs)
                         loss = criterion(outputs, targets)
                     else:
                         loss = criterion(outputs, targets)
+
+
+                    # if params["predict_disparity"] and params["loss_disparity"]:
+                    #     print("Disp, Disp", torch.max(targets))
+                    #     loss = criterion(outputs * params["disparity_constant"], targets * params["disparity_constant"])
+                    #     loss.backward()
+                    #     outputs, targets = flip_depth(outputs, targets, params)
+                    #     print(torch.max(targets))
+                    # elif params["predict_disparity"] and not params["loss_disparity"]:
+                    #     print("Disp, Depth", torch.max(targets))
+                    #     targets = (1 / targets)
+                    #     outputs[outputs < params["depth_min"]] = params["depth_min"]
+                    #     outputs = (1 / outputs)
+                    #     loss = criterion(outputs, targets)
+                    #     loss.backward()
+                    #     print(torch.max(targets))
+                    # elif not params["predict_disparity"] and params["loss_disparity"]:
+                    #     print("Depth, Disp", torch.max(targets))
+                    #     outputs, targets = flip_depth(outputs, targets, params)
+                    #     loss = criterion(outputs * params["disparity_constant"], targets * params["disparity_constant"])
+                    #     loss.backward()
+                    #     outputs, targets = flip_depth(outputs, targets, params)
+                    #     print(torch.max(targets))
+                    # else:
+                    #     print("Depth, Depth")
+                    #     loss = criterion(outputs, targets)
+                    #     loss.backward()
 
                     loss.backward()
                     optimizer.step()
