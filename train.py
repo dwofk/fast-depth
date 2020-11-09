@@ -169,6 +169,7 @@ def load_dataset(params):
         dataset, train_val_split_lengths)
     print("Train/val split: ", train_val_split_lengths)
     params["num_training_examples"] = len(train_dataset)
+    params["num_validation_examples"] = len(val_dataset)
 
     # DataLoaders
     train_loader = torch.utils.data.DataLoader(train_dataset,
@@ -210,8 +211,8 @@ def load_model(params, resume=None):
 def train(params, train_loader, val_loader, model, criterion, optimizer, scheduler, experiment):
     mean_val_loss = -1
     try:
-        train_step = 0
-        val_step = 0
+        train_step = np.ceil(params["num_training_examples"] / params["batch_size"]) * params["start_epoch"]
+        val_step = np.ceil(params["num_validation_examples"] / params["batch_size"] * params["start_epoch"])
         for epoch in range(params["num_epochs"] - params["start_epoch"]):
             current_epoch = params["start_epoch"] + epoch + 1
 
