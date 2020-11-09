@@ -25,7 +25,7 @@ import Datasets
 
 
 def get_params(file):
-    params = utils.load_training_parameters(params_file)
+    params = utils.load_config_file(params_file)
 
     # Convert from JSON format to DataLoader format
     params["training_dataset_paths"] = utils.format_dataset_path(

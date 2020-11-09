@@ -1,0 +1,15 @@
+{
+    "test_dataset_paths" : "/workspace/data/unreal/validation",
+    "nyu_dataset" : false,
+    "model" : "results/fastdepth_11_05_23_44",
+    "experiment_key" : "d27815a2231449ac89ad972f2ad275ba",
+    "depth_min" : 0.1,
+    "depth_max" : 10,
+    "disparity" : true,
+    "disparity_constant" : 1,
+    "num_workers" : 6,
+    "device" : 0,
+    "stats_frequency" : 20,
+    "save_images" : false,
+    "save_metrics" : false
+}

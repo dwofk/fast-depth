@@ -25,37 +25,40 @@ fieldnames = ['rmse', 'mae', 'delta1', 'absrel',
 
 def main(args):
 
-    if args.experiment_key:
+    print("Loading config file: ", args.config)
+    params = utils.load_config_file(args.config)
+
+    if "experiment_key" in params:
         experiment = ExistingExperiment(api_key="jBFVYFo9VUsy0kb0lioKXfTmM", previous_experiment=args.experiment_key)
     else:
         experiment = Experiment(api_key="jBFVYFo9VUsy0kb0lioKXfTmM", project_name="fastdepth")
 
-    params = {
-        "experiment_key" : args.experiment_key,
-        "save_image" : args.save_images,
-        "stats_frequency" : args.print_freq,
-        "save_metrics" : args.save_metrics,
-    }
-
     # Data loading code
     print("Creating data loaders...")
-    if args.data == 'nyudepthv2':
+    if params["nyu_dataset"]:
         from dataloaders.nyu import NYUDataset
         val_dataset = NYUDataset(args.directory, split='val')
-    elif args.data == "unreal":
-        val_dataset = Datasets.FastDepthDataset(
-            { args.directory }, split='val', input_shape_model=(224, 224), depth_max = args.max_depth)
+    else:
+        val_dataset = Datasets.FastDepthDataset(params["test_dataset_paths"],
+                                                split='val',
+                                                depth_min = params["depth_min"],
+                                                depth_max = params["depth_max"],
+                                                input_shape_model=(224, 224),
+                                                disparity=params["disparity"],
+                                                disparity_constant=params["disparity_constant"],
+                                                random_crop=False
+                                                )
 
     # set batch size to be 1 for validation
     val_loader = torch.utils.data.DataLoader(val_dataset,
                                              batch_size=1,
                                              shuffle=True,
-                                             num_workers=args.workers,
+                                             num_workers=params["num_workers"],
                                              pin_memory=True)
 
-    print("Loading model '{}'".format(args.model))
-    if args.data == "unreal":
-        model, _ = utils.load_model(params, args.model)
+    print("Loading model '{}'".format(params["model"]))
+    if not params["nyu_dataset"]:
+        model, _ = utils.load_model(params, params["model"])
     else:
         # Maintain compatibility for fastdepth NYU model format
         state_dict = torch.load(args.model, map_location=params["device"])
@@ -71,7 +74,7 @@ def main(args):
     model.to(params["device"])
 
     # Create output directory
-    output_directory = os.path.join(os.path.dirname(args.model), "images")
+    output_directory = os.path.join(os.path.dirname(params["model"]), "images")
     if not os.path.exists(output_directory):
         os.makedirs(output_directory)
     params["experiment_dir"] = output_directory
@@ -97,6 +100,11 @@ def evaluate(params, loader, model, experiment):
                 end = time.time()
                 outputs = model(inputs)
                 gpu_time = time.time() - end
+
+                if params["disparity"]:
+                    targets = (1 / targets)
+                    outputs[outputs < 0.001] = 0.001
+                    outputs = (1 / outputs)
 
                 result = Result()
                 result.evaluate(outputs.data, targets.data)
@@ -144,34 +152,7 @@ def evaluate(params, loader, model, experiment):
 
 
 if __name__ == '__main__':
-    data_names = ['nyudepthv2',
-                  'unreal']
-
     parser = argparse.ArgumentParser(description='FastDepth evaluation')
-    parser.add_argument('-m', '--model', default=str, help="Path to model.")
-    parser.add_argument('--data', metavar='DATA', default='nyudepthv2',
-                        choices=data_names,
-                        help='dataset: ' + ' | '.join(data_names) + ' (default: nyudepthv2)')
-    parser.add_argument('-d', '--directory', type=str,
-                        help="Directory of images to evaluate.")
-    parser.add_argument('-e', '--experiment_key', type=str, default=None, help="Comet ML Experiment key.")
-    parser.add_argument('--save_images', type=bool, default=False, help= "Save images to file.")
-    parser.add_argument('--save_metrics', type=bool, default=False, help="Save metrics to file")
-    parser.add_argument('-j', '--workers', default=16, type=int, metavar='N',
-                        help='number of data loading workers (default: 16)')
-    parser.add_argument('--max-depth', type=int, default=25,
-                        help="Maximum depth for ground truth.")
-    parser.add_argument('--print-freq', '-p', default=50, type=int,
-                        metavar='N', help='print frequency (default: 50)')
-    parser.add_argument('--gpu', default=-1, type=int,
-                        metavar='N', help="gpu id")
-    parser.add_argument('-n', '--num_photos_saved', type=int, default=1,
-                        help="Number of comparison photos to save during evaluation.")
-    parser.add_argument('-w', '--write', default=False, help="Whether or not to write results to CSV.")
-
+    parser.add_argument('--config', type=str, default="evaluate_config.json", help="Path to config JSON.")
     args = parser.parse_args()
-
-    assert os.path.isfile(args.model), \
-        "=> no model found at '{}'".format(args.evaluate)
-
     main(args)

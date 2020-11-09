@@ -150,7 +150,7 @@ def save_image(img_merge, filename):
     img_merge.save(filename)
 
 
-def load_training_parameters(file):
+def load_config_file(file):
     if not os.path.isfile(file):
         raise ValueError("Parameters file does not exist")
 
