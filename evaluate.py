@@ -27,9 +27,10 @@ def main(args):
 
     print("Loading config file: ", args.config)
     params = utils.load_config_file(args.config)
-
+    params["test_dataset_paths"] = utils.format_dataset_path(params["test_dataset_paths"])
+    
     if "experiment_key" in params:
-        experiment = ExistingExperiment(api_key="jBFVYFo9VUsy0kb0lioKXfTmM", previous_experiment=args.experiment_key)
+        experiment = ExistingExperiment(api_key="jBFVYFo9VUsy0kb0lioKXfTmM", previous_experiment=params["experiment_key"])
     else:
         experiment = Experiment(api_key="jBFVYFo9VUsy0kb0lioKXfTmM", project_name="fastdepth")
 
@@ -67,8 +68,8 @@ def main(args):
         params["start_epoch"] = 0
 
     # Set GPU
-    params["device"] = torch.device("cuda:{}".format(args.gpu)
-                          if args.gpu >= 0 and torch.cuda.is_available() else "cpu")
+    params["device"] = torch.device("cuda:{}".format(params["device"])
+                          if params["device"] >= 0 and torch.cuda.is_available() else "cpu")
     print("Using device", params["device"])
 
     model.to(params["device"])
@@ -103,7 +104,7 @@ def evaluate(params, loader, model, experiment):
 
                 if params["disparity"]:
                     targets = (1 / targets)
-                    outputs[outputs < 0.001] = 0.001
+                    outputs[outputs < params["depth_min"]] = params["depth_min"]
                     outputs = (1 / outputs)
 
                 result = Result()
@@ -116,7 +117,7 @@ def evaluate(params, loader, model, experiment):
                     img_merge = utils.merge_into_row(inputs[0], targets[0], outputs[0])
                     if params["experiment_key"]:
                         utils.log_merged_image_to_comet(img_merge, 0, i, experiment, "test")
-                    if params["save_image"]:                    
+                    if params["save_images"]:                    
                         filename = os.path.join(params["experiment_dir"], \
                             "comparison_epoch_{}_{}.png".format(str(params["start_epoch"]), np.where(img_idxs == i)[0][0]))
                         utils.save_image(img_merge, filename)
