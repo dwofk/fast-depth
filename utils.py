@@ -9,7 +9,7 @@ from PIL import Image
 import math
 import datetime
 from collections import OrderedDict
-
+import models
 
 cmap = plt.cm.viridis
 
@@ -150,7 +150,7 @@ def save_image(img_merge, filename):
     img_merge.save(filename)
 
 
-def load_training_parameters(file):
+def load_config_file(file):
     if not os.path.isfile(file):
         raise ValueError("Parameters file does not exist")
 
@@ -191,6 +191,21 @@ def make_dir_with_date(root_dir, prefix):
 def get_train_val_split_lengths(train_val_split, dataset_length):
     return [int(np.around(train_val_split[0] * 0.01 * dataset_length)),
             int(np.around(train_val_split[1] * 0.01 * dataset_length))]
+
+
+def load_model(params, resume=None):
+    # Load model checkpoint if specified
+    model_state_dict,\
+        optimizer_state_dict,\
+        params["start_epoch"], _ = load_checkpoint(resume)
+    model_state_dict = convert_state_dict_from_gpu(model_state_dict)
+
+    # Load the model
+    model = models.MobileNetSkipAdd(output_size=(224, 224), pretrained=True)
+    if model_state_dict:
+        model.load_state_dict(model_state_dict)
+
+    return model, optimizer_state_dict
 
 
 def load_checkpoint(model_path):
@@ -283,7 +298,10 @@ def log_comet_metrics(experiment, result, loss, prefix=None, step=None, epoch=No
     }
     experiment.log_metrics(metrics, prefix=prefix, step=step, epoch=epoch)
 
-def log_image_to_comet(input, target, output, epoch, id, experiment, prefix):
+def log_image_to_comet(input, target, output, epoch, id, experiment, prefix, step=None):
     img_merge = merge_into_row(input, target, output)
+    log_merged_image_to_comet(img_merge, epoch, id, experiment, prefix, step)
+
+def log_merged_image_to_comet(img_merge, epoch, id, experiment, prefix, step=None):
     img_name = "{}_epoch_{}_id_{}".format(prefix, epoch, id)
-    experiment.log_image(img_merge, name=img_name)
+    experiment.log_image(img_merge, name=img_name, step=step)

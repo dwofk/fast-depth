@@ -25,7 +25,7 @@ import Datasets
 
 
 def get_params(file):
-    params = utils.load_training_parameters(params_file)
+    params = utils.load_config_file(params_file)
 
     # Convert from JSON format to DataLoader format
     params["training_dataset_paths"] = utils.format_dataset_path(
@@ -47,7 +47,11 @@ def set_up_experiment(params, experiment, resume=None):
         "num_epochs": params["num_epochs"],
         "batch_size": params["batch_size"],
         "train_val_split": params["train_val_split"][0],
-        "depth_max": params["depth_max"]
+        "depth_max": params["depth_max"],
+        "depth_min" : params["depth_min"],
+        "disparity" : params["disparity"],
+        "disparity_constant": params["disparity_constant"],
+        "lr_epoch_step_size" : params["lr_epoch_step_size"]
     }
     experiment.log_parameters(hyper_params)
     experiment.add_tag(params["loss"])
@@ -64,7 +68,7 @@ def set_up_experiment(params, experiment, resume=None):
     params["device"] = torch.device("cuda:{}".format(params["device"]) if type(
         params["device"]) is int and torch.cuda.is_available() else "cpu")
 
-    model, optimizer_state_dict = load_model(params, resume)
+    model, optimizer_state_dict = utils.load_model(params, resume)
 
     # Create experiment directory
     if resume:
@@ -127,7 +131,7 @@ def set_up_experiment(params, experiment, resume=None):
     utils.optimizer_to_gpu(optimizer)
 
     # LR Scheduler
-    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=params["lr_epoch_step_size"], gamma=0.1)
+    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=params["lr_epoch_step_size"], gamma=0.1, last_epoch=params["start_epoch"])
     
     return params, train_loader, val_loader, test_loader, model, criterion, optimizer, scheduler
 
@@ -165,6 +169,7 @@ def load_dataset(params):
         dataset, train_val_split_lengths)
     print("Train/val split: ", train_val_split_lengths)
     params["num_training_examples"] = len(train_dataset)
+    params["num_validation_examples"] = len(val_dataset)
 
     # DataLoaders
     train_loader = torch.utils.data.DataLoader(train_dataset,
@@ -186,21 +191,6 @@ def load_dataset(params):
                                               pin_memory=True)
 
     return train_loader, val_loader, test_loader
-
-
-def load_model(params, resume=None):
-    # Load model checkpoint if specified
-    model_state_dict,\
-        optimizer_state_dict,\
-        params["start_epoch"], _ = utils.load_checkpoint(resume)
-    model_state_dict = utils.convert_state_dict_from_gpu(model_state_dict)
-
-    # Load the model
-    model = models.MobileNetSkipAdd(output_size=(224, 224), pretrained=True)
-    if model_state_dict:
-        model.load_state_dict(model_state_dict)
-
-    return model, optimizer_state_dict
     
 def flip_depth(outputs, targets, params):
     targets = (1 / targets)
@@ -211,8 +201,8 @@ def flip_depth(outputs, targets, params):
 def train(params, train_loader, val_loader, model, criterion, optimizer, scheduler, experiment):
     mean_val_loss = -1
     try:
-        train_step = 0
-        val_step = 0
+        train_step = np.ceil(params["num_training_examples"] / params["batch_size"]) * params["start_epoch"]
+        val_step = np.ceil(params["num_validation_examples"] / params["batch_size"] * params["start_epoch"])
         for epoch in range(params["num_epochs"] - params["start_epoch"]):
             current_epoch = params["start_epoch"] + epoch + 1
 
@@ -224,6 +214,7 @@ def train(params, train_loader, val_loader, model, criterion, optimizer, schedul
             model.train()
             with experiment.train():
                 for i, (inputs, targets) in enumerate(train_loader):
+
                     # Send data to GPU
                     inputs, targets = inputs.to(
                         params["device"]), targets.to(params["device"])
@@ -287,7 +278,7 @@ def train(params, train_loader, val_loader, model, criterion, optimizer, schedul
                     # Log images to Comet
                     if i in img_idxs:
                         utils.log_image_to_comet(
-                            inputs[0], targets[0], outputs[0], epoch, i, experiment, "train")
+                            inputs[0], targets[0], outputs[0], current_epoch, i, experiment, "train", train_step)
 
                     # Print statistics
                     running_loss += loss.item()
@@ -317,7 +308,6 @@ def train(params, train_loader, val_loader, model, criterion, optimizer, schedul
 
                         # Loss
                         if params["disparity"]:
-                            #loss = criterion(outputs * params["disparity_constant"], targets * params["disparity_constant"])
                             targets = (1 / targets)
                             outputs[outputs < params["depth_min"]] = params["depth_min"]
                             outputs = (1 / outputs)
@@ -339,7 +329,7 @@ def train(params, train_loader, val_loader, model, criterion, optimizer, schedul
                         # Log images to Comet
                         if i in img_idxs:
                             utils.log_image_to_comet(
-                                inputs[0], targets[0], outputs[0], epoch, i, experiment, "val")
+                                inputs[0], targets[0], outputs[0], current_epoch, i, experiment, "val", val_step)
 
                     # Log epoch metrics to Comet
                     mean_val_loss = epoch_loss / len(val_loader)
@@ -349,7 +339,7 @@ def train(params, train_loader, val_loader, model, criterion, optimizer, schedul
                           (current_epoch, mean_val_loss))
 
             # Save periodically
-            if (epoch + 1) % params["save_frequency"] == 0:
+            if (current_epoch + 1) % params["save_frequency"] == 0:
                 save_path = utils.get_save_path(
                     current_epoch, params["experiment_dir"])
                 utils.save_model(model, optimizer, save_path, current_epoch,
