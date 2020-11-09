@@ -47,7 +47,11 @@ def set_up_experiment(params, experiment, resume=None):
         "num_epochs": params["num_epochs"],
         "batch_size": params["batch_size"],
         "train_val_split": params["train_val_split"][0],
-        "depth_max": params["depth_max"]
+        "depth_max": params["depth_max"],
+        "depth_min" : params["depth_min"],
+        "disparity" : params["disparity"],
+        "disparity_constant": params["disparity_constant"],
+        "lr_epoch_step_size" : params["lr_epoch_step_size"]
     }
     experiment.log_parameters(hyper_params)
     experiment.add_tag(params["loss"])
