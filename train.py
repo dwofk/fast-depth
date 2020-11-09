@@ -68,7 +68,7 @@ def set_up_experiment(params, experiment, resume=None):
     params["device"] = torch.device("cuda:{}".format(params["device"]) if type(
         params["device"]) is int and torch.cuda.is_available() else "cpu")
 
-    model, optimizer_state_dict = load_model(params, resume)
+    model, optimizer_state_dict = utils.load_model(params, resume)
 
     # Create experiment directory
     if resume:
@@ -191,21 +191,6 @@ def load_dataset(params):
                                               pin_memory=True)
 
     return train_loader, val_loader, test_loader
-
-
-def load_model(params, resume=None):
-    # Load model checkpoint if specified
-    model_state_dict,\
-        optimizer_state_dict,\
-        params["start_epoch"], _ = utils.load_checkpoint(resume)
-    model_state_dict = utils.convert_state_dict_from_gpu(model_state_dict)
-
-    # Load the model
-    model = models.MobileNetSkipAdd(output_size=(224, 224), pretrained=True)
-    if model_state_dict:
-        model.load_state_dict(model_state_dict)
-
-    return model, optimizer_state_dict
     
 
 def train(params, train_loader, val_loader, model, criterion, optimizer, scheduler, experiment):
