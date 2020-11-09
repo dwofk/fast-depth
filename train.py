@@ -219,6 +219,7 @@ def train(params, train_loader, val_loader, model, criterion, optimizer, schedul
             model.train()
             with experiment.train():
                 for i, (inputs, targets) in enumerate(train_loader):
+
                     # Send data to GPU
                     inputs, targets = inputs.to(
                         params["device"]), targets.to(params["device"])
@@ -231,7 +232,6 @@ def train(params, train_loader, val_loader, model, criterion, optimizer, schedul
 
                     # Loss and backprop
                     if params["disparity"]:
-                        #loss = criterion(outputs * params["disparity_constant"], targets * params["disparity_constant"])
                         targets = (1 / targets)
                         outputs[outputs < params["depth_min"]] = params["depth_min"]
                         outputs = (1 / outputs)
@@ -256,7 +256,7 @@ def train(params, train_loader, val_loader, model, criterion, optimizer, schedul
                     # Log images to Comet
                     if i in img_idxs:
                         utils.log_image_to_comet(
-                            inputs[0], targets[0], outputs[0], epoch, i, experiment, "train")
+                            inputs[0], targets[0], outputs[0], current_epoch, i, experiment, "train")
 
                     # Print statistics
                     running_loss += loss.item()
@@ -286,7 +286,6 @@ def train(params, train_loader, val_loader, model, criterion, optimizer, schedul
 
                         # Loss
                         if params["disparity"]:
-                            #loss = criterion(outputs * params["disparity_constant"], targets * params["disparity_constant"])
                             targets = (1 / targets)
                             outputs[outputs < params["depth_min"]] = params["depth_min"]
                             outputs = (1 / outputs)
@@ -308,7 +307,7 @@ def train(params, train_loader, val_loader, model, criterion, optimizer, schedul
                         # Log images to Comet
                         if i in img_idxs:
                             utils.log_image_to_comet(
-                                inputs[0], targets[0], outputs[0], epoch, i, experiment, "val")
+                                inputs[0], targets[0], outputs[0], current_epoch, i, experiment, "val")
 
                     # Log epoch metrics to Comet
                     mean_val_loss = epoch_loss / len(val_loader)
@@ -318,7 +317,7 @@ def train(params, train_loader, val_loader, model, criterion, optimizer, schedul
                           (current_epoch, mean_val_loss))
 
             # Save periodically
-            if (epoch + 1) % params["save_frequency"] == 0:
+            if (current_epoch + 1) % params["save_frequency"] == 0:
                 save_path = utils.get_save_path(
                     current_epoch, params["experiment_dir"])
                 utils.save_model(model, optimizer, save_path, current_epoch,
