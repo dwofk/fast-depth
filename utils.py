@@ -283,7 +283,7 @@ def log_comet_metrics(experiment, result, loss, prefix=None, step=None, epoch=No
     }
     experiment.log_metrics(metrics, prefix=prefix, step=step, epoch=epoch)
 
-def log_image_to_comet(input, target, output, epoch, id, experiment, prefix):
+def log_image_to_comet(input, target, output, epoch, id, experiment, prefix, step):
     img_merge = merge_into_row(input, target, output)
     img_name = "{}_epoch_{}_id_{}".format(prefix, epoch, id)
-    experiment.log_image(img_merge, name=img_name)
+    experiment.log_image(img_merge, name=img_name, step=step)
