@@ -205,10 +205,10 @@ def load_dataset(params):
 def train(params, train_loader, val_loader, model, criterion, optimizer, scheduler, experiment):
     mean_val_loss = -1
     try:
-        train_step = np.ceil(
-            params["num_training_examples"] / params["batch_size"]) * params["start_epoch"]
-        val_step = np.ceil(params["num_validation_examples"] /
-                           params["batch_size"] * params["start_epoch"])
+        train_step = int(np.ceil(
+            params["num_training_examples"] / params["batch_size"]) * params["start_epoch"])
+        val_step = int(np.ceil(params["num_validation_examples"] /
+                           params["batch_size"] * params["start_epoch"]))
         clip = (1.0 / params["depth_max"]
                 ) if params["predict_disparity"] else params["min_depth"]
         for epoch in range(params["num_epochs"] - params["start_epoch"]):

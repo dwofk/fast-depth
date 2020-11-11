@@ -253,7 +253,6 @@ def load_checkpoint(model_path):
         best_loss,\
 
 
-
 def get_save_path(epoch, save_dir="./results"):
     save_path = os.path.join(
         save_dir, "model_{}.pth".format(str(epoch).zfill(4)))
@@ -327,7 +326,7 @@ def log_image_to_comet(input, target, output, epoch, id, experiment, result, pre
 
 def log_merged_image_to_comet(img_merge, epoch, id, experiment, prefix, step=None):
     img_name = "{}_epoch_{}_id_{}".format(prefix, epoch, id)
-    experiment.log_image(img_merge, name=img_name, step=step)
+    experiment.log_image(img_merge, name=img_name, step=int(step))
 
 
 def flip_depth(outputs, targets, clip=None):
