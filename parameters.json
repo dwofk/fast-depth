@@ -1,6 +1,6 @@
 {
-    "training_dataset_paths" : "/workspace/mnt/datasets/unreal_data_sample",
-    "test_dataset_paths" : "/workspace/mnt/datasets/unreal_data_sample",
+    "training_dataset_paths" : "/workspace/data/unreal/training/Tank_Cleaning_Center_1082020",
+    "test_dataset_paths" : "/workspace/data/unreal/training/Tank_Cleaning_Center_1082020",
     "train_val_split" : [99, 1],
     "depth_min" : 0.1,
     "depth_max" : 10,
@@ -8,8 +8,8 @@
     "disparity_constant" : 1,
     "loss_disparity" : false,
     "random_crop" : false,
-    "batch_size" : 4,
-    "num_workers" : 1,
+    "batch_size" : 256,
+    "num_workers" : 8,
     "device" : 0,
     "loss" : "L1",
     "optimizer" : {
@@ -18,10 +18,12 @@
         "momentum" : 0.9,
         "weight_decay" : 0.0001
     },
-    "num_epochs" : 40,
-    "stats_frequency" : 20,
+    "num_epochs" : 5,
+    "stats_frequency" : 1,
     "save_frequency" : 10,
     "save_dir" : "results/",
     "max_checkpoints" : 80,
-    "lr_epoch_step_size" : 20
+    "lr_epoch_step_size" : 20,
+    "save_test_images" : false,
+    "save_test_metrics" : false
 }

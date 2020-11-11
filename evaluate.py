@@ -15,8 +15,10 @@ import torch.backends.cudnn as cudnn
 import torch.optim
 cudnn.benchmark = True
 
-dataset_path = "/workspace/mnt/repositories/bayesian-visual-odometry/scripts"
-# dataset_path = "/workspace/data/alex/bayesian-visual-odometry/scripts"
+try:
+    dataset_path = os.environ["DATASETS_ABS_PATH"]
+except KeyError:
+    print("Datasets.py absolute path not found in PATH")
 sys.path.append(dataset_path)
 import Datasets
 
@@ -36,7 +38,7 @@ def main(args):
 
     # Data loading code
     print("Creating data loaders...")
-    if params["nyu_dataset"]:
+    if args.nyu:
         from dataloaders.nyu import NYUDataset
         val_dataset = NYUDataset(args.directory, split='val')
     else:
@@ -45,8 +47,7 @@ def main(args):
                                                 depth_min = params["depth_min"],
                                                 depth_max = params["depth_max"],
                                                 input_shape_model=(224, 224),
-                                                disparity=params["disparity"],
-                                                disparity_constant=params["disparity_constant"],
+                                                disparity=params["predict_disparity"],
                                                 random_crop=False
                                                 )
 
@@ -57,9 +58,9 @@ def main(args):
                                              num_workers=params["num_workers"],
                                              pin_memory=True)
 
-    print("Loading model '{}'".format(params["model"]))
-    if not params["nyu_dataset"]:
-        model, _ = utils.load_model(params, params["model"])
+    print("Loading model '{}'".format(args.model))
+    if not args.nyu:
+        model, _ = utils.load_model(params, args.model)
     else:
         # Maintain compatibility for fastdepth NYU model format
         state_dict = torch.load(args.model, map_location=params["device"])
@@ -75,7 +76,7 @@ def main(args):
     model.to(params["device"])
 
     # Create output directory
-    output_directory = os.path.join(os.path.dirname(params["model"]), "images")
+    output_directory = os.path.join(os.path.dirname(args.model), "images")
     if not os.path.exists(output_directory):
         os.makedirs(output_directory)
     params["experiment_dir"] = output_directory
@@ -101,11 +102,10 @@ def evaluate(params, loader, model, experiment):
                 end = time.time()
                 outputs = model(inputs)
                 gpu_time = time.time() - end
-
-                if params["disparity"]:
-                    targets = (1 / targets)
-                    outputs[outputs < params["depth_min"]] = params["depth_min"]
-                    outputs = (1 / outputs)
+                
+                # Flip to depth if necessary
+                outputs, targets = utils.convert_to_depth(
+                    outputs, targets, not_clipped_yet=True, is_disparity=params["predict_disparity"], clip=1.0 / params["depth_max"])
 
                 result = Result()
                 result.evaluate(outputs.data, targets.data)
@@ -117,7 +117,7 @@ def evaluate(params, loader, model, experiment):
                     img_merge = utils.merge_into_row(inputs[0], targets[0], outputs[0])
                     img_merge = utils.write_results(img_merge, result)
                     utils.log_merged_image_to_comet(img_merge, 0, i, experiment, "test")
-                    if params["save_images"]:                    
+                    if params["save_test_images"]:                    
                         filename = os.path.join(params["experiment_dir"], \
                             "comparison_epoch_{}_{}.png".format(str(params["start_epoch"]), np.where(img_idxs == i)[0][0]))
                         utils.save_image(img_merge, filename)
@@ -143,7 +143,7 @@ def evaluate(params, loader, model, experiment):
                   'Lg10={average.lg10:.3f}\n'    
                   't_GPU={time:.3f}\n'.format(average=avg, time=avg.gpu_time))
 
-            if params["save_metrics"]:
+            if params["save_test_metrics"]:
                 filename = os.path.join(params["experiment_dir"], "results.csv")
                 with open(filename, 'a') as csvfile:
                     writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
@@ -154,6 +154,10 @@ def evaluate(params, loader, model, experiment):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='FastDepth evaluation')
-    parser.add_argument('--config', type=str, default="evaluate_config.json", help="Path to config JSON.")
+    parser.add_argument('-m', '--model', type=str, required=True, help="Model path.")
+    parser.add_argument('-c', '--config', type=str, default="evaluate_config.json", help="Path to config JSON.")
+    parser.add_argument('-e', '--existing-experiment', type=str, help="Comet Existing Experiment key")
+    parser.add_argument('--nyu', type=int, default=0,
+                        help='whether to use NYU Depth V2 dataset.')
     args = parser.parse_args()
     main(args)

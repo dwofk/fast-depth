@@ -14,6 +14,8 @@ import models
 cmap = plt.cm.viridis
 
 # Here for legacy code
+
+
 def parse_command():
     data_names = ['nyudepthv2',
                   'unreal']
@@ -135,6 +137,7 @@ def merge_into_row_with_gt(input, depth_input, depth_target, depth_pred):
 
     return img_merge
 
+
 def add_row(img_merge, row):
     return np.vstack([img_merge, row])
 
@@ -154,8 +157,9 @@ def write_results(img, results):
                 font, 1, (255, 255, 255), 1)
     cv2.putText(out, delta1, (out.shape[1] - blank.shape[1], 90),
                 font, 1, (255, 255, 255), 1)
-    
+
     return out
+
 
 def save_image(img_merge, filename):
     img_merge = Image.fromarray(img_merge.astype('uint8'))
@@ -167,6 +171,7 @@ def load_config_file(file):
         raise ValueError("Parameters file does not exist")
 
     return json.load(open(file))
+
 
 def format_dataset_path(dataset_paths):
     if isinstance(dataset_paths, str):
@@ -183,18 +188,18 @@ def format_dataset_path(dataset_paths):
 
 def make_dir_with_date(root_dir, prefix):
     time = datetime.datetime.now()
-    
+
     pid = None
     try:
         pid = os.environ["COMET_OPTIMIZER_PROCESS_ID"]
     except KeyError:
         pass
-    
+
     date_dir = os.path.join(root_dir, prefix + "_" +
-                                time.strftime("%m_%d_%H_%M")) 
+                            time.strftime("%m_%d_%H_%M"))
     if pid:
         date_dir += "_opt_{}".format(pid)
-        
+
     if not os.path.exists(date_dir):
         os.makedirs(date_dir)
     return date_dir
@@ -250,7 +255,8 @@ def load_checkpoint(model_path):
 
 
 def get_save_path(epoch, save_dir="./results"):
-    save_path = os.path.join(save_dir, "model_{}.pth".format(str(epoch).zfill(4)))
+    save_path = os.path.join(
+        save_dir, "model_{}.pth".format(str(epoch).zfill(4)))
     return save_path
 
 
@@ -277,6 +283,7 @@ def optimizer_to_gpu(optimizer):
             if torch.is_tensor(v) and v.device == "cpu":
                 state[k] = v.cuda()
 
+
 def convert_state_dict_from_gpu(state_dict):
     if state_dict:
         new_state_dict = OrderedDict()
@@ -301,20 +308,47 @@ def save_losses_plot(path, num_epochs, losses, title):
     plt.title("{} Loss".format(title))
     plt.savefig(path, bbox_inches="tight")
 
+
 def log_comet_metrics(experiment, result, loss, prefix=None, step=None, epoch=None):
     metrics = {
-        "loss" : loss,
-        "rmse" : result.rmse,
-        "mae" : result.mae,
-        "delta1" : result.delta1
+        "loss": loss,
+        "rmse": result.rmse,
+        "mae": result.mae,
+        "delta1": result.delta1
     }
     experiment.log_metrics(metrics, prefix=prefix, step=step, epoch=epoch)
 
+
 def log_image_to_comet(input, target, output, epoch, id, experiment, result, prefix, step=None):
     img_merge = merge_into_row(input, target, output)
-    img_merge = utils.write_results(img_merge, result)
+    img_merge = write_results(img_merge, result)
     log_merged_image_to_comet(img_merge, epoch, id, experiment, prefix, step)
+
 
 def log_merged_image_to_comet(img_merge, epoch, id, experiment, prefix, step=None):
     img_name = "{}_epoch_{}_id_{}".format(prefix, epoch, id)
     experiment.log_image(img_merge, name=img_name, step=step)
+
+
+def flip_depth(outputs, targets, clip=None):
+    targets = (1 / targets)
+    if clip:
+        outputs[outputs < clip] = clip
+    outputs = (1 / outputs)
+    return outputs, targets
+
+
+def process_for_loss(outputs, targets, predict_disparity, loss_disparity, disparity_constant, clip=0.1):
+    c = disparity_constant if loss_disparity else 1
+    if predict_disparity != loss_disparity:
+        outputs, targets = flip_depth(outputs, targets, clip)
+
+    return outputs, targets, c
+
+
+def convert_to_depth(outputs, targets, not_clipped_yet, is_disparity, clip=None):
+    clip = clip if not_clipped_yet else None
+    if is_disparity:
+        outputs, targets = flip_depth(outputs, targets, clip)
+
+    return outputs, targets

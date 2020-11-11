@@ -14,14 +14,19 @@ import utils
 import matplotlib.pyplot as plt
 from metrics import AverageMeter, Result
 from dataloaders.nyu import NYUDataset
+import evaluate
 
 params_file = "parameters.json"
 
 # Import custom Dataset
-#DATASET_ABS_PATH = "/workspace/mnt/repositories/bayesian-visual-odometry/scripts"
-DATASET_ABS_PATH = "/workspace/data/alex/bayesian-visual-odometry/scripts"
-sys.path.append(DATASET_ABS_PATH)
+try:
+    dataset_path = os.environ["DATASETS_ABS_PATH"]
+except KeyError:
+    print("Datasets.py absolute path not found in PATH")
+sys.path.append(dataset_path)
 import Datasets
+
+params_file = "parameters.json"
 
 
 def get_params(file):
@@ -48,10 +53,11 @@ def set_up_experiment(params, experiment, resume=None):
         "batch_size": params["batch_size"],
         "train_val_split": params["train_val_split"][0],
         "depth_max": params["depth_max"],
-        "depth_min" : params["depth_min"],
-        "disparity" : params["predict_disparity"],
+        "depth_min": params["depth_min"],
+        "disparity": params["predict_disparity"],
         "disparity_constant": params["disparity_constant"],
-        "lr_epoch_step_size" : params["lr_epoch_step_size"]
+        "loss_on_disparity": params["loss_disparity"],
+        "lr_epoch_step_size": params["lr_epoch_step_size"]
     }
     experiment.log_parameters(hyper_params)
     experiment.add_tag(params["loss"])
@@ -79,7 +85,7 @@ def set_up_experiment(params, experiment, resume=None):
     print("Saving results to ", experiment_dir)
     params["experiment_dir"] = experiment_dir
     experiment.log_other("saved_model_directory", experiment_dir)
-    
+
     # Use parallel GPUs if available
     # Specify which GPUs to use on DGX
     try:
@@ -132,10 +138,12 @@ def set_up_experiment(params, experiment, resume=None):
 
     # LR Scheduler
     if resume:
-        scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=params["lr_epoch_step_size"], gamma=0.1, last_epoch=params["start_epoch"])
+        scheduler = optim.lr_scheduler.StepLR(
+            optimizer, step_size=params["lr_epoch_step_size"], gamma=0.1, last_epoch=params["start_epoch"])
     else:
-        scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=params["lr_epoch_step_size"], gamma=0.1)
-    
+        scheduler = optim.lr_scheduler.StepLR(
+            optimizer, step_size=params["lr_epoch_step_size"], gamma=0.1)
+
     return params, train_loader, val_loader, test_loader, model, criterion, optimizer, scheduler
 
 
@@ -143,7 +151,7 @@ def load_dataset(params):
     # Create dataset
     print("Loading the dataset...")
 
-    if params['NYU']:
+    if params['nyu_dataset']:
         dataset = NYUDataset("../data/nyudepthv2/train", split='train')
         test_dataset = NYUDataset("../data/nyudepthv2/val", split='val')
     else:
@@ -156,12 +164,12 @@ def load_dataset(params):
                                             random_crop=params["random_crop"])
 
         test_dataset = Datasets.FastDepthDataset(params["test_dataset_paths"],
-                                                split='val',
-                                                depth_min=params["depth_min"],
-                                                depth_max=params["depth_max"],
-                                                input_shape_model=(224, 224),
-                                                disparity=params["predict_disparity"],
-                                                random_crop=False)
+                                                 split='val',
+                                                 depth_min=params["depth_min"],
+                                                 depth_max=params["depth_max"],
+                                                 input_shape_model=(224, 224),
+                                                 disparity=params["predict_disparity"],
+                                                 random_crop=False)
 
     # Make training/validation split
     train_val_split_lengths = utils.get_train_val_split_lengths(
@@ -192,27 +200,17 @@ def load_dataset(params):
                                               pin_memory=True)
 
     return train_loader, val_loader, test_loader
-    
-def flip_depth(outputs, targets, clip=True):
-    targets = (1 / targets)
-    if clip:
-        outputs[outputs < 1e-6] = 1e-6
-    outputs = (1 / outputs)
-    return outputs, targets
 
-def convert_to_depth(outputs, targets, predict_disparity, loss_disparity):
-    clip = True if predict_disparity else False
-    if loss_disparity:
-        outputs, targets = flip_depth(outputs, targets, clip)
-        print("Flipping after Loss with clip: ", clip)
-    
-    return  outputs, targets
 
 def train(params, train_loader, val_loader, model, criterion, optimizer, scheduler, experiment):
     mean_val_loss = -1
     try:
-        train_step = np.ceil(params["num_training_examples"] / params["batch_size"]) * params["start_epoch"]
-        val_step = np.ceil(params["num_validation_examples"] / params["batch_size"] * params["start_epoch"])
+        train_step = np.ceil(
+            params["num_training_examples"] / params["batch_size"]) * params["start_epoch"]
+        val_step = np.ceil(params["num_validation_examples"] /
+                           params["batch_size"] * params["start_epoch"])
+        clip = (1.0 / params["depth_max"]
+                ) if params["predict_disparity"] else params["min_depth"]
         for epoch in range(params["num_epochs"] - params["start_epoch"]):
             current_epoch = params["start_epoch"] + epoch + 1
 
@@ -236,19 +234,18 @@ def train(params, train_loader, val_loader, model, criterion, optimizer, schedul
                     outputs = model(inputs)
 
                     # Flip and apply constant if necessary
-                    c = params["disparity_constant"] if params["loss_disparity"] else 1
-                    print("C: ", c)
+                    outputs, targets, c = utils.process_for_loss(
+                        outputs, targets, params["predict_disparity"],
+                        params["loss_disparity"], params["disparity_constant"], clip)
 
-                    if params["predict_disparity"] != params["loss_disparity"]:
-                        outputs, targets = flip_depth(outputs, targets)
-                        print("Flipping Before Loss")
-
+                    # Compute loss
                     loss = criterion(outputs * c, targets * c)
                     loss.backward()
                     optimizer.step()
-                    
+
                     # Flip back if necessary
-                    outputs, targets = convert_to_depth(outputs, targets, params["predict_disparity"], params["loss_disparity"])
+                    outputs, targets = utils.convert_to_depth(
+                        outputs, targets, params["predict_disparity"], params["loss_disparity"], clip)
 
                     # Calculate metrics
                     result = Result()
@@ -292,15 +289,18 @@ def train(params, train_loader, val_loader, model, criterion, optimizer, schedul
                         # Predict
                         outputs = model(inputs)
 
-                        # Loss
-                        if params["predict_disparity"]:
-                            targets = (1 / targets)
-                            outputs[outputs < params["depth_min"]] = params["depth_min"]
-                            outputs = (1 / outputs)
-                            loss = criterion(outputs, targets)
-                        else:
-                            loss = criterion(outputs, targets)
-                        
+                        # Flip and apply constant if necessary
+                        outputs, targets, c = utils.process_for_loss(
+                            outputs, targets, params["predict_disparity"],
+                            params["loss_disparity"], params["disparity_constant"], clip)
+
+                        # Compute loss
+                        loss = criterion(outputs * c, targets * c)
+
+                        # Flip back if necessary
+                        outputs, targets = utils.convert_to_depth(
+                            outputs, targets, params["predict_disparity"], params["loss_disparity"], clip)
+
                         # Calculate metrics
                         result = Result()
                         result.evaluate(outputs.data, targets.data)
@@ -356,63 +356,25 @@ def train(params, train_loader, val_loader, model, criterion, optimizer, schedul
         print("Model saved to ", os.path.abspath(save_path))
 
 
-def evaluate(params, loader, model, criterion, experiment):
-    print("Testing...")
-    with experiment.test():
-        with torch.no_grad():
-            running_loss = 0.0
-            total_loss = 0.0
-            average = AverageMeter()
-            img_idxs = np.random.randint(0, len(loader), size=min(len(loader), 50))
-            for i, (inputs, targets) in enumerate(loader):
-                inputs, targets = inputs.to(
-                    params["device"]), targets.to(params["device"])
-
-                # Predict
-                outputs = model(inputs)
-
-                # Loss
-                loss = criterion(outputs, targets)
-                total_loss += loss.item()
-
-                result = Result()
-                result.evaluate(outputs.data, targets.data)
-                average.update(result, 0, 0, inputs.size(0))
-
-                # Log images to comet
-                if i in img_idxs:
-                    utils.log_image_to_comet(
-                        inputs[0], targets[0], outputs[0], 0, i, experiment, result, "test")
-
-                    running_loss += loss.item()
-                    if (i + 1) % params["stats_frequency"] == 0 and i != 0:
-                        print('[{}/{}] loss: {:.3f}'.format(i + 1, len(loader),
-                                                            running_loss / params["stats_frequency"]))
-                        running_loss = 0.0
-
-                        # Mean validation loss
-                        mean_loss = total_loss / len(loader)
-                        utils.log_comet_metrics(experiment, average.average(), mean_loss)
-                        print("Average Test Loss: %.3f" % (mean_loss))
-
-
 def main(args):
     os.environ["USE_MULTIPLE_GPUS"] = "TRUE"
 
     # Create Comet ML Experiment
     if args.resume:
         experiment_key = input("Enter Comet ML key of experiment to resume:")
-        experiment = ExistingExperiment(api_key="jBFVYFo9VUsy0kb0lioKXfTmM", previous_experiment=experiment_key)
+        experiment = ExistingExperiment(
+            api_key="jBFVYFo9VUsy0kb0lioKXfTmM", previous_experiment=experiment_key)
     else:
-        experiment = Experiment(api_key="jBFVYFo9VUsy0kb0lioKXfTmM", project_name="fastdepth")
+        experiment = Experiment(
+            api_key="jBFVYFo9VUsy0kb0lioKXfTmM", project_name="fastdepth")
 
     if args.tag:
         experiment.add_tag(args.tag)
     if args.name:
         experiment.set_name(args.name)
-    
+
     params = get_params(params_file)
-    params["NYU"] = args.nyu
+    params["nyu_dataset"] = args.nyu
 
     params, train_loader, val_loader, test_loader, \
         model, criterion, optimizer, scheduler = set_up_experiment(
@@ -421,7 +383,7 @@ def main(args):
     train(params, train_loader, val_loader,
           model, criterion, optimizer, scheduler, experiment)
 
-    evaluate(params, test_loader, model, criterion, experiment)
+    evaluate.evaluate(params, test_loader, model, experiment)
 
 
 if __name__ == "__main__":
@@ -433,6 +395,7 @@ if __name__ == "__main__":
                         help='Extra tag to add to Comet experiment')
     parser.add_argument('-n', '--name', type=str, default=None,
                         help='Comet ML Experiment name')
-    parser.add_argument('--nyu', type=int, default=0, help='whether to use NYU Depth V2 dataset.')                        
+    parser.add_argument('--nyu', type=int, default=0,
+                        help='whether to use NYU Depth V2 dataset.')
     args = parser.parse_args()
     main(args)
