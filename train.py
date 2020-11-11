@@ -18,8 +18,8 @@ from dataloaders.nyu import NYUDataset
 params_file = "parameters.json"
 
 # Import custom Dataset
-DATASET_ABS_PATH = "/workspace/mnt/repositories/bayesian-visual-odometry/scripts"
-# DATASET_ABS_PATH = "/workspace/data/alex/bayesian-visual-odometry/scripts"
+#DATASET_ABS_PATH = "/workspace/mnt/repositories/bayesian-visual-odometry/scripts"
+DATASET_ABS_PATH = "/workspace/data/alex/bayesian-visual-odometry/scripts"
 sys.path.append(DATASET_ABS_PATH)
 import Datasets
 
@@ -49,7 +49,7 @@ def set_up_experiment(params, experiment, resume=None):
         "train_val_split": params["train_val_split"][0],
         "depth_max": params["depth_max"],
         "depth_min" : params["depth_min"],
-        "disparity" : params["disparity"],
+        "disparity" : params["predict_disparity"],
         "disparity_constant": params["disparity_constant"],
         "lr_epoch_step_size" : params["lr_epoch_step_size"]
     }
@@ -131,7 +131,10 @@ def set_up_experiment(params, experiment, resume=None):
     utils.optimizer_to_gpu(optimizer)
 
     # LR Scheduler
-    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=params["lr_epoch_step_size"], gamma=0.1, last_epoch=params["start_epoch"])
+    if resume:
+        scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=params["lr_epoch_step_size"], gamma=0.1, last_epoch=params["start_epoch"])
+    else:
+        scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=params["lr_epoch_step_size"], gamma=0.1)
     
     return params, train_loader, val_loader, test_loader, model, criterion, optimizer, scheduler
 
@@ -150,7 +153,6 @@ def load_dataset(params):
                                             depth_max=params["depth_max"],
                                             input_shape_model=(224, 224),
                                             disparity=params["predict_disparity"],
-                                            disparity_constant=params["disparity_constant"],
                                             random_crop=params["random_crop"])
 
         test_dataset = Datasets.FastDepthDataset(params["test_dataset_paths"],
@@ -159,7 +161,6 @@ def load_dataset(params):
                                                 depth_max=params["depth_max"],
                                                 input_shape_model=(224, 224),
                                                 disparity=params["predict_disparity"],
-                                                disparity_constant=params["disparity_constant"],
                                                 random_crop=False)
 
     # Make training/validation split
@@ -192,11 +193,20 @@ def load_dataset(params):
 
     return train_loader, val_loader, test_loader
     
-def flip_depth(outputs, targets, params):
+def flip_depth(outputs, targets, clip=True):
     targets = (1 / targets)
-    outputs[outputs == 0] = 0.001
+    if clip:
+        outputs[outputs < 1e-6] = 1e-6
     outputs = (1 / outputs)
     return outputs, targets
+
+def convert_to_depth(outputs, targets, predict_disparity, loss_disparity):
+    clip = True if predict_disparity else False
+    if loss_disparity:
+        outputs, targets = flip_depth(outputs, targets, clip)
+        print("Flipping after Loss with clip: ", clip)
+    
+    return  outputs, targets
 
 def train(params, train_loader, val_loader, model, criterion, optimizer, scheduler, experiment):
     mean_val_loss = -1
@@ -225,45 +235,21 @@ def train(params, train_loader, val_loader, model, criterion, optimizer, schedul
                     # Predict
                     outputs = model(inputs)
 
-                    # Loss and backprop
-                    if params["predict_disparity"]:
-                        targets = (1 / targets)
-                        outputs[outputs < params["depth_min"]] = params["depth_min"]
-                        outputs = (1 / outputs)
-                        loss = criterion(outputs, targets)
-                    else:
-                        loss = criterion(outputs, targets)
+                    # Flip and apply constant if necessary
+                    c = params["disparity_constant"] if params["loss_disparity"] else 1
+                    print("C: ", c)
 
+                    if params["predict_disparity"] != params["loss_disparity"]:
+                        outputs, targets = flip_depth(outputs, targets)
+                        print("Flipping Before Loss")
 
-                    # if params["predict_disparity"] and params["loss_disparity"]:
-                    #     print("Disp, Disp", torch.max(targets))
-                    #     loss = criterion(outputs * params["disparity_constant"], targets * params["disparity_constant"])
-                    #     loss.backward()
-                    #     outputs, targets = flip_depth(outputs, targets, params)
-                    #     print(torch.max(targets))
-                    # elif params["predict_disparity"] and not params["loss_disparity"]:
-                    #     print("Disp, Depth", torch.max(targets))
-                    #     targets = (1 / targets)
-                    #     outputs[outputs < params["depth_min"]] = params["depth_min"]
-                    #     outputs = (1 / outputs)
-                    #     loss = criterion(outputs, targets)
-                    #     loss.backward()
-                    #     print(torch.max(targets))
-                    # elif not params["predict_disparity"] and params["loss_disparity"]:
-                    #     print("Depth, Disp", torch.max(targets))
-                    #     outputs, targets = flip_depth(outputs, targets, params)
-                    #     loss = criterion(outputs * params["disparity_constant"], targets * params["disparity_constant"])
-                    #     loss.backward()
-                    #     outputs, targets = flip_depth(outputs, targets, params)
-                    #     print(torch.max(targets))
-                    # else:
-                    #     print("Depth, Depth")
-                    #     loss = criterion(outputs, targets)
-                    #     loss.backward()
-
+                    loss = criterion(outputs * c, targets * c)
                     loss.backward()
                     optimizer.step()
-                        
+                    
+                    # Flip back if necessary
+                    outputs, targets = convert_to_depth(outputs, targets, params["predict_disparity"], params["loss_disparity"])
+
                     # Calculate metrics
                     result = Result()
                     result.evaluate(outputs.data, targets.data)
@@ -307,7 +293,7 @@ def train(params, train_loader, val_loader, model, criterion, optimizer, schedul
                         outputs = model(inputs)
 
                         # Loss
-                        if params["disparity"]:
+                        if params["predict_disparity"]:
                             targets = (1 / targets)
                             outputs[outputs < params["depth_min"]] = params["depth_min"]
                             outputs = (1 / outputs)
