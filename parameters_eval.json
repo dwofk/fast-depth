@@ -1,0 +1,13 @@
+{
+    "test_dataset_paths" : "/workspace/data/unreal/training/Tank_Cleaning_Center_1082020",
+    "depth_min" : 0.1,
+    "depth_max" : 10,
+    "predict_disparity" : true,
+    "disparity_constant" : 1,
+    "batch_size" : 256,
+    "num_workers" : 8,
+    "device" : 0,
+    "stats_frequency" : 1,
+    "save_test_images" : false,
+    "save_test_metrics" : false
+}
