@@ -32,7 +32,7 @@ model.eval()
 # Use torch.jit.trace to generate a torch.jit.ScriptModule via tracing.
 traced_script_module = torch.jit.trace(model, example)
 
-model_dir = model_path.split('/')[:-1][0]
+model_dir = os.path.join(*model_path.split('/')[:-1])
 model_name = model_path.split('/')[-1]
 device_ext = "gpu" if args.save_gpu else "cpu"
 
