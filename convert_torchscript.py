@@ -8,15 +8,20 @@ import models
 parser = argparse.ArgumentParser(description='FastDepth evaluation')
 parser.add_argument('-m', '--model', type=str, required=True, help="Path to model.")
 parser.add_argument('--save-gpu', action='store_true')
+parser.add_argument('--nyu', action='store_true')
 args = parser.parse_args()
 
 model_path = args.model
 
-model_state_dict, _, _, _ = utils.load_checkpoint(args.model)
-model_state_dict = utils.convert_state_dict_from_gpu(model_state_dict)
-model = models.MobileNetSkipAdd(output_size=(224, 224), pretrained=True)
-if model_state_dict:
-    model.load_state_dict(model_state_dict)
+if args.nyu:
+    checkpoint = torch.load(args.model)
+    model = checkpoint['model']
+else:
+    model_state_dict, _, _, _ = utils.load_checkpoint(args.model)
+    model_state_dict = utils.convert_state_dict_from_gpu(model_state_dict)
+    model = models.MobileNetSkipAdd(output_size=(224, 224), pretrained=True)
+    if model_state_dict:
+        model.load_state_dict(model_state_dict)
 
 if args.save_gpu:
     print("Saving model on GPU")
