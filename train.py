@@ -210,7 +210,7 @@ def train(params, train_loader, val_loader, model, criterion, optimizer, schedul
         val_step = int(np.ceil(params["num_validation_examples"] /
                            params["batch_size"] * params["start_epoch"]))
         clip = (1.0 / params["depth_max"]
-                ) if params["predict_disparity"] else params["min_depth"]
+                ) if params["predict_disparity"] else params["depth_min"]
         for epoch in range(params["num_epochs"] - params["start_epoch"]):
             current_epoch = params["start_epoch"] + epoch + 1
 

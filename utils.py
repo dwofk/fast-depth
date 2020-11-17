@@ -326,7 +326,9 @@ def log_image_to_comet(input, target, output, epoch, id, experiment, result, pre
 
 def log_merged_image_to_comet(img_merge, epoch, id, experiment, prefix, step=None):
     img_name = "{}_epoch_{}_id_{}".format(prefix, epoch, id)
-    experiment.log_image(img_merge, name=img_name, step=int(step))
+    if step:
+        step = int(step)
+    experiment.log_image(img_merge, name=img_name, step=step)
 
 
 def flip_depth(outputs, targets, clip=None):
