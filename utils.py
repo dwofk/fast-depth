@@ -324,6 +324,34 @@ def log_image_to_comet(input, target, output, epoch, id, experiment, result, pre
     log_merged_image_to_comet(img_merge, epoch, id, experiment, prefix, step)
 
 
+def stack_images(input, target, output):
+    b, g, r = cv2.split(input)
+    return cv2.merge((b, g, r, output, target))
+
+
+def create_raw_image(image):
+    return image.tobytes()    
+
+
+def log_raw_image_to_comet(input, target, output, epoch, id, experiment, prefix, step=None):
+    # C, H, W -> H, W, C
+    input = np.transpose(np.squeeze(input.cpu().numpy()), (1, 2, 0))
+    target = np.squeeze(target.cpu().numpy())
+    output = np.squeeze(output.data.cpu().numpy())
+
+    stacked_images = stack_images(input, target, output)
+    raw_image = create_raw_image(stacked_images)
+    log_merged_raw_image_to_comet(raw_image, epoch, id, experiment, prefix, step)
+
+
+def log_merged_raw_image_to_comet(raw_image, epoch, id, experiment, prefix, step=None):
+    file_name = "{}_epoch_{}_id_{}.raw".format(prefix, epoch, id)
+    if step:
+        step = int(step)
+
+    experiment.log_asset_data(raw_image, name=file_name, step=step)
+
+
 def log_merged_image_to_comet(img_merge, epoch, id, experiment, prefix, step=None):
     img_name = "{}_epoch_{}_id_{}".format(prefix, epoch, id)
     if step:
