@@ -30,6 +30,12 @@ This repo offers trained models and evaluation code for the [FastDepth](http://f
 	tar -xvf nyudepthv2.tar.gz && rm -f nyudepthv2.tar.gz
 	cd ..
 	```
+- You can also load the dataset with Hugging Face Datasets with just two lines of code in Python:
+  ```py
+  from datasets import load_dataset # installation is `pip install datasets`
+
+  nyu = load_dataset("sayakpaul/nyu_depth_v2")
+  ```
 
 ## Trained Models ##
   The following trained models can be found at [http://datasets.lids.mit.edu/fastdepth/results/](http://datasets.lids.mit.edu/fastdepth/results/).
